@@ -1,4 +1,4 @@
-const DEFAULTS = { text: '', delay: 40, jitter: true, startDelay: 800, mode: 'char', showOnSelect: true, target: 'auto', autoStart: true };
+const DEFAULTS = { text: '', delay: 40, jitter: true, startDelay: 800, mode: 'char', showOnSelect: true, target: 'auto', autoStartOnHighlight: false };
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -9,7 +9,7 @@ const els = {
   mode: $('mode'),
   showOnSelect: $('showOnSelect'),
   target: $('target'),
-  autoStart: $('autoStart'),
+  autoStartOnHighlight: $('autoStartOnHighlight'),
 };
 
 const readSettings = () => ({
@@ -20,7 +20,7 @@ const readSettings = () => ({
   mode: els.mode.value,
   showOnSelect: els.showOnSelect.checked,
   target: els.target.value,
-  autoStart: els.autoStart.checked,
+  autoStartOnHighlight: els.autoStartOnHighlight.checked,
 });
 
 const showError = (msg) => ($('status').textContent = msg);
@@ -40,7 +40,7 @@ async function init() {
   els.mode.value = saved.mode;
   els.showOnSelect.checked = saved.showOnSelect;
   els.target.value = saved.target;
-  els.autoStart.checked = saved.autoStart;
+  els.autoStartOnHighlight.checked = saved.autoStartOnHighlight;
   showTyperStatus();
   $('delayVal').textContent = `${saved.delay} ms`;
 }

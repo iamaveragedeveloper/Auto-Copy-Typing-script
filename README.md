@@ -5,8 +5,8 @@ Types your text into places that block pasting, using real keystrokes. Two tools
 | | Chrome extension | Local typer (Windows) |
 |---|---|---|
 | Works in | Pages in Chrome / Edge | Any window: browsers, desktop apps, remote sessions |
-| Input | Highlight text on a page (starts a 5s timer), or paste into the popup | Paste into a page on `localhost:8765` |
-| Start | Automatic on highlight (with the typer), "Type in 5s" button, popup | "Type in 5 seconds" button or the hotkey (**Alt+Q**) |
+| Input | Highlight text on a page, then click the button, or paste into the popup | Paste into a page on `localhost:8765` |
+| Start | "Type in 5s" button after you highlight, or the popup | "Type in 5 seconds" button or the hotkey (**Alt+Q**) |
 | Needs | Nothing to install beyond loading it | [Node.js](https://nodejs.org) and Windows |
 | Together | Detects the local typer when it runs and sends typing through it, so highlights can be typed into any app | Optional: everything works without the extension |
 
@@ -20,11 +20,11 @@ Types your text into places that block pasting, using real keystrokes. Two tools
 ### Use it (with the local typer running)
 
 1. Start `local-typer\start.bat` once and leave its window open.
-2. **Highlight** the text or code you want typed, on any page (a browser editor like Monaco, Ace or CodeMirror works too).
-3. A countdown banner appears: **5, 4, 3...** Switch to **any app** (Notepad, an IDE, a terminal, another browser) and click where the text should go.
+2. **Highlight** the text or code you want typed, on any page (a browser editor like Monaco, Ace or CodeMirror works too). A **Type in 5s** button appears next to it. Nothing is typed yet.
+3. Click **Type in 5s**. That is your confirmation. A countdown banner appears: **5, 4, 3...** Switch to **any app** (Notepad, an IDE, a terminal, another browser) and click where the text should go.
 4. When it reaches 0 the text is typed there. Code is detected and typed in *code editor* mode.
 
-Cancel with **Cancel** on the banner, **Esc**, or the typer's **Alt+Q** hotkey. The popup lets you paste text by hand, change the speed, and turn the highlight reaction or the automatic timer off.
+Cancel with **Cancel** on the banner, **Esc**, or the typer's **Alt+Q** hotkey. The popup lets you paste text by hand, change the speed, and turn the highlight reaction off. If you want typing to start the moment you highlight, with no button click, there is an opt-in popup checkbox for that; it is off by default.
 
 ### Without the local typer
 

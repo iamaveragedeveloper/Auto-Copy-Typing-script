@@ -1,4 +1,4 @@
-const DEFAULTS = { text: '', delay: 40, jitter: true, startDelay: 800, mode: 'char', showOnSelect: true, target: 'auto', autoStart: true };
+const DEFAULTS = { text: '', delay: 40, jitter: true, startDelay: 800, mode: 'char', showOnSelect: true, target: 'auto', autoStartOnHighlight: false };
 const AUTOTYPE_SECONDS = 5;
 
 const runs = new Map(); // tabId -> { stop: boolean }
@@ -368,7 +368,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       await chrome.storage.local.set(saved);
       const settings = { ...DEFAULTS, ...(await chrome.storage.local.get(DEFAULTS)), ...saved };
       if (!(await useTyper(settings))) return { auto: false };
-      if (settings.autoStart && sender.tab) {
+      if (settings.autoStartOnHighlight && sender.tab) {
         beginAutotype(msg.text, !!msg.isCode, { tabId: sender.tab.id, frameId: sender.frameId });
         return { auto: true };
       }
