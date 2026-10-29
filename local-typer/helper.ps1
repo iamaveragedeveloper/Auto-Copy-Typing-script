@@ -45,15 +45,17 @@ public class TyperHelper
     [DllImport("user32.dll")] static extern IntPtr GetKeyboardLayout(uint tid);
     [DllImport("user32.dll")] static extern short VkKeyScanEx(char ch, IntPtr hkl);
     [DllImport("user32.dll")] static extern uint MapVirtualKey(uint code, uint mapType);
+    [DllImport("user32.dll")] static extern int ToUnicodeEx(uint vk, uint scan, byte[] keyState, [Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder buf, int cch, uint flags, IntPtr hkl);
 
     const ushort VK_BACK = 0x08, VK_TAB = 0x09, VK_RETURN = 0x0D, VK_SHIFT = 0x10;
-    const ushort VK_END = 0x23, VK_DELETE = 0x2E;
+    const ushort VK_END = 0x23, VK_HOME = 0x24, VK_DELETE = 0x2E;
     const uint KEYEVENTF_EXTENDEDKEY = 0x1, KEYEVENTF_KEYUP = 0x2, KEYEVENTF_UNICODE = 0x4;
 
     static StreamWriter outW;
     static volatile bool stop;
     static volatile bool typing;
     static IntPtr hkl;
+    static IntPtr targetWnd;
     static Random rng = new Random();
     static int lastPct;
 
@@ -117,7 +119,8 @@ public class TyperHelper
             if (!stop) WaitForModifiersReleased();
             if (!stop)
             {
-                hkl = GetKeyboardLayout(GetWindowThreadProcessId(GetForegroundWindow(), IntPtr.Zero));
+                targetWnd = GetForegroundWindow();
+                hkl = GetKeyboardLayout(GetWindowThreadProcessId(targetWnd, IntPtr.Zero));
                 text = text.Replace("\r\n", "\n").Replace('\r', '\n').TrimEnd('\n');
                 lastPct = -1;
                 if (mode == "code") TypeCode(text, delay, jitter);
@@ -168,7 +171,7 @@ public class TyperHelper
         {
             SendString(text.Substring(i, 1));
             Progress(i, text.Length);
-            Pause(delay, jitter);
+            Pause(Math.Max(delay, 15), jitter);
         }
     }
 
@@ -181,63 +184,51 @@ public class TyperHelper
         for (int i = 0; i < lines.Length && !stop; i++)
         {
             string line = lines[i].Trim().Length == 0 ? "" : lines[i];
-            TypeCodeLine(line, i == lines.Length - 1);
+            TypeCodeLine(line, i == 0, i == lines.Length - 1, delay, jitter);
             Progress(i, lines.Length);
-            Pause(delay * Math.Min(Math.Max(line.Length, 1), 12), jitter);
         }
     }
 
-    static int Count(string s, string chars)
+    // Keys are sent one at a time with a pause between them: bursts make slower editors
+    // (web IDEs especially) drop or reorder characters.
+    static void TypeCodeLine(string line, bool first, bool last, int delay, bool jitter)
     {
-        int n = 0;
-        foreach (char c in s) if (chars.IndexOf(c) >= 0) n++;
-        return n;
-    }
-
-    static int IndentWidth(string line)
-    {
-        int w = 0;
-        foreach (char c in line)
+        if (!first)
         {
-            if (c == ' ') w += 1;
-            else if (c == '\t') w += 4;
-            else break;
-        }
-        return w;
-    }
-
-    static void TypeCodeLine(string line, bool last)
-    {
-        if (line.Length > 0) { SendString(line); Thread.Sleep(30); }
-
-        if (Count(line, "([{") > Count(line, ")]}"))
-        {
-            // the editor probably auto-inserted closers after the cursor; the source types its own later
-            SendVk(VK_END, true, true);
+            // remove whatever indentation the editor inserted after Enter; the line brings its own
+            SendVk(VK_HOME, true, true);
+            Thread.Sleep(15);
             SendVk(VK_DELETE, false, true);
             Thread.Sleep(15);
         }
 
-        if (last) return;
+        int keyDelay = Math.Max(delay, 15);
+        for (int k = 0; k < line.Length && !stop; k++)
+        {
+            SendString(line.Substring(k, 1));
+            Pause(keyDelay, jitter);
+        }
+        if (stop) return;
 
         if (line.Length > 0)
         {
             // a space closes any autocomplete popup, so Enter inserts a newline instead of accepting a suggestion
             SendString(" ");
-            Thread.Sleep(15);
+            Thread.Sleep(20);
             SendVk(VK_BACK, false, false);
-            Thread.Sleep(15);
+            Thread.Sleep(20);
         }
-        SendVk(VK_RETURN, false, false);
-        Thread.Sleep(25);
 
-        int width = IndentWidth(line);
-        if (width > 0 || Regex.IsMatch(line, @"[:{(\[]\s*$"))
-        {
-            // Shift+Tab outdents one level and does nothing on an unindented line
-            int presses = Math.Min(30, (width + 1) / 2 + 2);
-            for (int k = 0; k < presses; k++) { SendVk(VK_TAB, true, false); Thread.Sleep(5); }
-        }
+        // the cursor is at the end of the document, so anything after it is auto-closed brackets or quotes
+        SendVk(VK_END, true, true);
+        Thread.Sleep(15);
+        SendVk(VK_DELETE, false, true);
+        Thread.Sleep(15);
+
+        if (last) return;
+
+        SendVk(VK_RETURN, false, false);
+        Thread.Sleep(40);
     }
 
     static INPUT Key(ushort vk, ushort scan, uint flags)
@@ -250,14 +241,35 @@ public class TyperHelper
         return i;
     }
 
+    // A marker entry: Flush sends everything before it, then waits a few ms. Shift gets its own
+    // gap so a busy page has registered it before the character key arrives (and after, before it lifts).
+    static INPUT Gap()
+    {
+        INPUT i = new INPUT();
+        i.type = uint.MaxValue;
+        return i;
+    }
+
     static void AddVk(List<INPUT> list, ushort vk, bool shift, bool extended)
     {
         uint ext = extended ? KEYEVENTF_EXTENDEDKEY : 0;
         ushort scan = (ushort)MapVirtualKey(vk, 0);
-        if (shift) list.Add(Key(VK_SHIFT, (ushort)MapVirtualKey(VK_SHIFT, 0), 0));
+        if (shift) { list.Add(Key(VK_SHIFT, (ushort)MapVirtualKey(VK_SHIFT, 0), 0)); list.Add(Gap()); }
         list.Add(Key(vk, scan, ext));
         list.Add(Key(vk, scan, ext | KEYEVENTF_KEYUP));
-        if (shift) list.Add(Key(VK_SHIFT, (ushort)MapVirtualKey(VK_SHIFT, 0), KEYEVENTF_KEYUP));
+        if (shift) { list.Add(Gap()); list.Add(Key(VK_SHIFT, (ushort)MapVirtualKey(VK_SHIFT, 0), KEYEVENTF_KEYUP)); }
+    }
+
+    // True only if pressing this key (with this shift state) on the target layout types exactly c.
+    // Dead keys (' " ^ ~ ` on international layouts) and remapped layouts fail this and are sent as unicode instead.
+    static bool ProducesChar(ushort vk, bool shift, char c)
+    {
+        byte[] ks = new byte[256];
+        if (shift) ks[VK_SHIFT] = 0x80;
+        if (Control.IsKeyLocked(Keys.CapsLock)) ks[0x14] = 1;
+        StringBuilder sb = new StringBuilder(8);
+        int r = ToUnicodeEx(vk, MapVirtualKey(vk, 0), ks, sb, sb.Capacity, 4, hkl); // 4 = don't disturb dead-key state
+        return r == 1 && sb[0] == c;
     }
 
     static void AddChar(List<INPUT> list, char c)
@@ -270,25 +282,44 @@ public class TyperHelper
         {
             bool shift = ((v >> 8) & 1) != 0;
             if (char.IsLetter(c) && Control.IsKeyLocked(Keys.CapsLock)) shift = !shift;
-            AddVk(list, (ushort)(v & 0xFF), shift, false);
+            if (ProducesChar((ushort)(v & 0xFF), shift, c))
+            {
+                AddVk(list, (ushort)(v & 0xFF), shift, false);
+                return;
+            }
         }
-        else
+        // no plain key for this character on the current layout: send it as a unicode character
+        list.Add(Key(0, c, KEYEVENTF_UNICODE));
+        list.Add(Key(0, c, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP));
+    }
+
+    static void CheckFocus()
+    {
+        if (targetWnd != IntPtr.Zero && GetForegroundWindow() != targetWnd)
         {
-            // no plain key for this character on the current layout: send it as a unicode character
-            list.Add(Key(0, c, KEYEVENTF_UNICODE));
-            list.Add(Key(0, c, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP));
+            stop = true;
+            throw new Exception("Stopped: the active window changed while typing");
         }
+    }
+
+    static void Send(List<INPUT> part)
+    {
+        if (part.Count == 0) return;
+        INPUT[] arr = part.ToArray();
+        if (SendInput((uint)arr.Length, arr, Marshal.SizeOf(typeof(INPUT))) != (uint)arr.Length)
+            throw new Exception("Windows blocked the keystrokes (is the target app running as administrator?)");
     }
 
     static void Flush(List<INPUT> list)
     {
-        const int chunk = 300;
-        for (int i = 0; i < list.Count; i += chunk)
+        CheckFocus();
+        List<INPUT> part = new List<INPUT>();
+        foreach (INPUT i in list)
         {
-            INPUT[] part = list.GetRange(i, Math.Min(chunk, list.Count - i)).ToArray();
-            if (SendInput((uint)part.Length, part, Marshal.SizeOf(typeof(INPUT))) != (uint)part.Length)
-                throw new Exception("Windows blocked the keystrokes (is the target app running as administrator?)");
+            if (i.type == uint.MaxValue) { Send(part); part.Clear(); Thread.Sleep(3); }
+            else part.Add(i);
         }
+        Send(part);
     }
 
     static void SendString(string s)

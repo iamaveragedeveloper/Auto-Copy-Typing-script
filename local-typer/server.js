@@ -5,7 +5,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 
 const HOST = '127.0.0.1';
 const PORT = Number(process.env.PORT) || 8765;
@@ -65,6 +65,13 @@ function startHelper() {
     return;
   }
   const { modMask, vk } = parseHotkey(HOTKEY);
+  // A helper left over from a previous run keeps the hotkey and can type alongside the new one, garbling the output.
+  spawnSync(
+    'powershell.exe',
+    ['-NoProfile', '-NonInteractive', '-Command',
+      "Get-CimInstance Win32_Process -Filter \"Name='powershell.exe'\" | Where-Object { $_.CommandLine -like '*helper.ps1*-Mods*' -and $_.ProcessId -ne $PID } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"],
+    { windowsHide: true }
+  );
   helper = spawn(
     'powershell.exe',
     ['-NoProfile', '-NonInteractive', '-STA', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'helper.ps1'), '-Mods', String(modMask), '-Vk', String(vk)],

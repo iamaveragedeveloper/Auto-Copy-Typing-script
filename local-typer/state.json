@@ -1,5 +1,5 @@
 {
-  "text": "\ndef solve(input_str):\n    a = list(map(float, input_str.split()))\n    n = int(a[0])\n    t = a[1:n+1]\n\n    print(f\"Average: {sum(t)/n:.2f} Highest: {max(t):.2f} Lowest: {min(t):.2f}\")\n\nif __name__ == \"__main__\":\n    import sys\n    solve(sys.stdin.read())\n",
+  "text": "import pandas as pd\nimport time\nimport os\n\ndef solve():\n    filename = \"sales_data.csv\"\n\n    if not os.path.exists(filename):\n        data = pd.DataFrame({\n            \"Sales\": range(65000),\n            \"Profit\": range(65000, 130000)\n        })\n        data.to_csv(filename, index=False)\n\n    start_time = time.perf_counter()\n    df = pd.read_csv(filename)\n    elapsed = time.perf_counter() - start_time\n\n    print(f\"Time to read file: {elapsed:.4f} seconds\")\n\nif __name__ == \"__main__\":\n    solve()\n",
   "mode": "code",
   "delay": 0,
   "jitter": true,
