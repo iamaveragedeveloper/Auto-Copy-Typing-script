@@ -5,65 +5,176 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Copy Paste Typer</title>
   <style>
-    :root { color-scheme: light dark; --muted: #888; --err: #c33; --ok: #2a7; }
-    body { max-width: 720px; margin: 24px auto; padding: 0 16px; font: 14px/1.5 system-ui, sans-serif; }
-    h1 { font-size: 18px; margin: 0 0 4px; }
-    textarea { width: 100%; height: 340px; box-sizing: border-box; padding: 8px; font: 13px/1.4 Consolas, monospace; tab-size: 4; resize: vertical; }
-    .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px 16px; margin-top: 12px; }
-    label { display: flex; align-items: center; gap: 8px; }
-    select, input[type=number] { font: inherit; }
-    input[type=range] { flex: 1; }
-    .row { display: flex; gap: 8px; margin-top: 14px; }
-    button { padding: 8px 14px; font: inherit; cursor: pointer; }
-    button.primary { font-weight: 600; }
-    #status { margin-top: 12px; min-height: 1.5em; }
-    #status.err { color: var(--err); }
-    #status.ok { color: var(--ok); }
-    .muted { color: var(--muted); font-size: 13px; }
-    kbd { padding: 1px 6px; border: 1px solid var(--muted); border-radius: 4px; font: inherit; font-size: 12px; }
+    :root {
+      color-scheme: light dark;
+      --bg: #f4f5fa; --card: #ffffff; --line: #e3e5ee; --text: #1b1d2a; --muted: #6b6f85;
+      --field: #fbfbfe; --accent: #5b54f0; --accent-2: #7b74ff; --accent-ink: #ffffff;
+      --ok: #1d9a5f; --warn: #d98a0b; --err: #d6403f; --shadow: 0 1px 2px rgba(20,20,50,.05), 0 8px 30px rgba(20,20,50,.07);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f1017; --card: #171925; --line: #272a3b; --text: #eceef7; --muted: #8e93ab;
+        --field: #12131d; --accent: #7068ff; --accent-2: #8a83ff; --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 40px rgba(0,0,0,.35);
+      }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: radial-gradient(1100px 500px at 50% -120px, color-mix(in srgb, var(--accent) 16%, transparent), transparent), var(--bg);
+           color: var(--text); font: 14px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; min-height: 100vh; }
+    .wrap { max-width: 860px; margin: 0 auto; padding: 32px 20px 56px; }
+
+    header { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
+    .logo { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; color: #fff;
+            background: linear-gradient(135deg, var(--accent), var(--accent-2)); box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 45%, transparent); }
+    .logo svg { width: 24px; height: 24px; }
+    h1 { margin: 0; font-size: 21px; letter-spacing: -.01em; }
+    .sub { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+    .chip { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px;
+            background: var(--card); border: 1px solid var(--line); font-size: 12.5px; font-weight: 500; white-space: nowrap; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
+    .chip.ready .dot { background: var(--ok); }
+    .chip.busy .dot { background: var(--accent); animation: pulse 1s infinite; }
+    .chip.err .dot { background: var(--err); }
+    @keyframes pulse { 50% { opacity: .25; } }
+
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); }
+    .editor { padding: 14px; }
+    .editor-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .editor-head .label { font-weight: 600; font-size: 13px; }
+    .stats { margin-left: auto; color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+    textarea { width: 100%; height: 330px; padding: 14px; resize: vertical; tab-size: 4; color: var(--text); background: var(--field);
+               border: 1px solid var(--line); border-radius: 12px; font: 13px/1.55 'Cascadia Code', Consolas, ui-monospace, monospace; outline: none; }
+    textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+    textarea::placeholder { color: var(--muted); }
+
+    .ghost { all: unset; cursor: pointer; padding: 5px 10px; border-radius: 8px; font-size: 12.5px; color: var(--muted); border: 1px solid var(--line); }
+    .ghost:hover { color: var(--text); border-color: var(--muted); }
+
+    .settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px 24px; padding: 18px 20px; margin-top: 16px; }
+    .field > .name { display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 8px; }
+    .field > .name output { color: var(--text); text-transform: none; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+
+    .seg { display: grid; grid-template-columns: 1fr 1fr; padding: 3px; gap: 3px; background: var(--field); border: 1px solid var(--line); border-radius: 10px; }
+    .seg label { text-align: center; padding: 7px 8px; border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--muted); }
+    .seg input { position: absolute; opacity: 0; pointer-events: none; }
+    .seg input:checked + span { color: var(--text); }
+    .seg label:has(input:checked) { background: var(--card); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.15); }
+    .seg label:has(input:focus-visible) { outline: 2px solid var(--accent); }
+
+    input[type=range] { width: 100%; accent-color: var(--accent); }
+    input[type=number] { width: 100%; padding: 8px 10px; font: inherit; color: var(--text); background: var(--field); border: 1px solid var(--line); border-radius: 10px; outline: none; }
+    input[type=number]:focus { border-color: var(--accent); }
+    .num-wrap { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+
+    .switch { display: flex; align-items: center; gap: 12px; cursor: pointer; font-weight: 500; }
+    .switch input { position: absolute; opacity: 0; }
+    .track { width: 40px; height: 23px; border-radius: 999px; background: var(--line); position: relative; flex: none; transition: background .15s; }
+    .track::after { content: ''; position: absolute; top: 3px; left: 3px; width: 17px; height: 17px; border-radius: 50%; background: #fff; transition: transform .15s; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+    .switch input:checked + .track { background: var(--accent); }
+    .switch input:checked + .track::after { transform: translateX(17px); }
+    .switch input:focus-visible + .track { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .hint-sm { color: var(--muted); font-size: 12.5px; margin-top: 6px; }
+
+    .actions { display: flex; gap: 10px; margin-top: 16px; }
+    .btn { all: unset; box-sizing: border-box; cursor: pointer; text-align: center; padding: 13px 20px; border-radius: 12px; font-weight: 600; font-size: 15px; }
+    .btn.primary { flex: 1; color: var(--accent-ink); background: linear-gradient(135deg, var(--accent), var(--accent-2));
+                   box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 38%, transparent); }
+    .btn.primary:hover { filter: brightness(1.07); }
+    .btn.primary:disabled { filter: grayscale(.6) opacity(.55); cursor: default; box-shadow: none; }
+    .btn.stop { background: var(--card); border: 1px solid var(--line); color: var(--text); padding: 13px 26px; }
+    .btn.stop:hover { border-color: var(--err); color: var(--err); }
+    .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+    .status { margin-top: 16px; padding: 14px 16px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); }
+    .status .line { display: flex; align-items: center; gap: 10px; font-weight: 500; }
+    .status.err { border-color: color-mix(in srgb, var(--err) 55%, var(--line)); color: var(--err); }
+    .status.count .big { font-size: 22px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; min-width: 1ch; }
+    .bar { height: 6px; margin-top: 10px; border-radius: 99px; background: var(--line); overflow: hidden; }
+    .bar > i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .3s; }
+    .status:not(.run) .bar { display: none; }
+
+    .tips { margin-top: 22px; color: var(--muted); font-size: 13px; display: grid; gap: 6px; }
+    .tips b { color: var(--text); font-weight: 600; }
+    kbd { padding: 1px 7px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px; background: var(--card); color: var(--text); font: 600 12px ui-monospace, Consolas, monospace; }
   </style>
 </head>
 <body>
-  <h1>Copy Paste Typer</h1>
-  <p class="muted">Paste your text, click into the other app's text field, then press <kbd id="hotkey"></kbd>. Press it again to stop.</p>
+  <div class="wrap">
+    <header>
+      <div class="logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg>
+      </div>
+      <div>
+        <h1>Copy Paste Typer</h1>
+        <p class="sub">Paste once, click into any app, press <kbd id="hotkey">…</kbd> to type it.</p>
+      </div>
+      <div class="chip" id="chip"><span class="dot"></span><span id="chipText">Connecting…</span></div>
+    </header>
 
-  <textarea id="text" placeholder="Paste the text you want typed here…" spellcheck="false"></textarea>
+    <section class="card editor">
+      <div class="editor-head">
+        <span class="label">Text to type</span>
+        <button class="ghost" id="pasteBtn" type="button">Paste from clipboard</button>
+        <button class="ghost" id="clearBtn" type="button">Clear</button>
+        <span class="stats" id="stats">0 characters · 0 lines</span>
+      </div>
+      <textarea id="text" placeholder="Paste the text you want typed here…" spellcheck="false"></textarea>
+    </section>
 
-  <div class="controls">
-    <label>
-      <span>Mode</span>
-      <select id="mode">
-        <option value="code">Code editor (line by line)</option>
-        <option value="char">Plain text (letter by letter)</option>
-      </select>
-    </label>
-    <label>
-      <span>Delay</span>
-      <input id="delay" type="range" min="0" max="300" step="5">
-      <span id="delayVal"></span>
-    </label>
-    <label>
-      <span>Start after</span>
-      <input id="startDelay" type="number" min="0" max="30000" step="100" style="width:80px"> ms
-    </label>
-    <label><input id="jitter" type="checkbox"> Vary the timing randomly</label>
+    <section class="card settings">
+      <div class="field">
+        <div class="name">Mode</div>
+        <div class="seg" role="radiogroup" aria-label="Mode">
+          <label><input type="radio" name="mode" value="code"><span>Code editor</span></label>
+          <label><input type="radio" name="mode" value="char"><span>Plain text</span></label>
+        </div>
+        <div class="hint-sm" id="modeHint"></div>
+      </div>
+
+      <div class="field">
+        <div class="name">Speed<output id="delayVal"></output></div>
+        <input id="delay" type="range" min="0" max="300" step="5" aria-label="Delay between keystrokes">
+        <div class="hint-sm">Delay between keystrokes. Raise it if characters get dropped.</div>
+      </div>
+
+      <div class="field">
+        <div class="name">Start after</div>
+        <div class="num-wrap"><input id="startDelay" type="number" min="0" max="30000" step="100"> ms</div>
+        <div class="hint-sm">Used when you press the hotkey.</div>
+      </div>
+
+      <div class="field">
+        <div class="name">Timing</div>
+        <label class="switch"><input id="jitter" type="checkbox"><span class="track"></span>Vary the timing randomly</label>
+      </div>
+    </section>
+
+    <div class="actions">
+      <button class="btn primary" id="typeNow" type="button">Type in 5 seconds</button>
+      <button class="btn stop" id="stop" type="button">Stop</button>
+    </div>
+
+    <div class="status" id="status">
+      <div class="line"><span class="big" id="big"></span><span id="statusText">Starting…</span></div>
+      <div class="bar"><i id="barFill"></i></div>
+    </div>
+
+    <div class="tips">
+      <div><b>Code editor mode</b> types each line, then clears the editor's auto-indent and auto-closed brackets so the result matches your text. Click at the end of an <b>empty</b> editor first.</div>
+      <div><b>Plain text mode</b> types every character exactly as it is, for fields with no auto-formatting.</div>
+      <div>Pressing <kbd id="hotkey2">…</kbd> again, or the Stop button, stops typing at any time.</div>
+    </div>
   </div>
-
-  <div class="row">
-    <button id="typeNow" class="primary">Type in 5 seconds</button>
-    <button id="stop">Stop</button>
-  </div>
-  <div id="status"></div>
-
-  <p class="muted">
-    Code editor mode types each line, then clears the editor's auto-indent and auto-closed brackets so the result matches
-    your text. Click at the end of an <b>empty</b> editor first. "Type in 5 seconds" gives you time to switch windows.
-  </p>
 
   <script>
     const TOKEN = '__TOKEN__';
+    const COUNTDOWN_MS = 5000;
     const $ = (id) => document.getElementById(id);
-    const fields = ['text', 'mode', 'delay', 'startDelay', 'jitter'].map($);
+    const modeRadios = [...document.querySelectorAll('input[name=mode]')];
+    const fields = [$('text'), $('delay'), $('startDelay'), $('jitter'), ...modeRadios];
+    const MODE_HINTS = {
+      code: 'Fixes auto-indent and auto-closed brackets.',
+      char: 'Every character exactly as pasted.',
+    };
 
     async function api(path, body) {
       const res = await fetch(path, {
@@ -74,58 +185,122 @@
       return res.json();
     }
 
+    const getMode = () => (modeRadios.find((r) => r.checked) || modeRadios[0]).value;
+    const setMode = (m) => modeRadios.forEach((r) => (r.checked = r.value === m));
+
     const readForm = () => ({
       text: $('text').value,
-      mode: $('mode').value,
+      mode: getMode(),
       delay: Number($('delay').value),
       startDelay: Number($('startDelay').value) || 0,
       jitter: $('jitter').checked,
     });
 
+    function refreshLabels() {
+      const t = $('text').value;
+      const lines = t ? t.replace(/\r\n?/g, '\n').replace(/\n+$/, '').split('\n').length : 0;
+      $('stats').textContent = `${t.length.toLocaleString()} character${t.length === 1 ? '' : 's'} · ${lines.toLocaleString()} line${lines === 1 ? '' : 's'}`;
+      $('delayVal').textContent = `${$('delay').value} ms`;
+      $('modeHint').textContent = MODE_HINTS[getMode()];
+    }
+
     let saveTimer;
     const scheduleSave = () => {
-      $('delayVal').textContent = `${$('delay').value} ms`;
+      refreshLabels();
       clearTimeout(saveTimer);
       saveTimer = setTimeout(() => api('/api/state', readForm()), 300);
     };
     fields.forEach((el) => el.addEventListener('input', scheduleSave));
+    modeRadios.forEach((el) => el.addEventListener('change', scheduleSave));
 
-    function render(status) {
-      const el = $('status');
-      el.className = '';
+    $('pasteBtn').addEventListener('click', async () => {
+      try {
+        $('text').value = await navigator.clipboard.readText();
+        scheduleSave();
+      } catch {
+        $('text').focus(); // clipboard permission denied: Ctrl+V into the box instead
+      }
+    });
+    $('clearBtn').addEventListener('click', () => {
+      $('text').value = '';
+      scheduleSave();
+      $('text').focus();
+    });
+
+    let countdownUntil = 0;
+    let lastStatus = { helperReady: false, running: false, progress: 0, error: null };
+
+    function render(status = lastStatus) {
+      lastStatus = status;
+      const box = $('status');
+      const chip = $('chip');
+      const left = Math.ceil((countdownUntil - Date.now()) / 1000);
+      const counting = status.running && status.progress === 0 && left > 0;
+      box.className = 'status';
+      chip.className = 'chip';
+      $('big').textContent = '';
+      $('typeNow').disabled = false;
+
       if (status.error) {
-        el.textContent = status.error;
-        el.className = 'err';
+        box.classList.add('err');
+        chip.classList.add('err');
+        $('chipText').textContent = 'Problem';
+        $('statusText').textContent = status.error;
+      } else if (counting) {
+        box.classList.add('count');
+        chip.classList.add('busy');
+        $('chipText').textContent = 'Starting soon';
+        $('big').textContent = left;
+        $('statusText').textContent = 'Click into the field you want typed in now…';
+        $('typeNow').disabled = true;
       } else if (status.running) {
-        el.textContent = `Typing… ${status.progress}%`;
-        el.className = 'ok';
+        box.classList.add('run');
+        chip.classList.add('busy');
+        $('chipText').textContent = 'Typing';
+        $('statusText').textContent = `Typing… ${status.progress}%`;
+        $('barFill').style.width = `${status.progress}%`;
+        $('typeNow').disabled = true;
       } else if (!status.helperReady) {
-        el.textContent = 'Starting typing helper…';
+        $('chipText').textContent = 'Starting helper';
+        $('statusText').textContent = 'Starting typing helper…';
       } else {
-        el.textContent = 'Ready.';
+        chip.classList.add('ready');
+        $('chipText').textContent = 'Ready';
+        $('statusText').textContent = 'Ready. Paste your text, then click into the target field and use the hotkey.';
       }
     }
 
     async function init() {
       const { state, status, hotkey } = await api('/api/state');
       $('hotkey').textContent = hotkey;
+      $('hotkey2').textContent = hotkey;
       $('text').value = state.text;
-      $('mode').value = state.mode;
+      setMode(state.mode);
       $('delay').value = state.delay;
       $('startDelay').value = state.startDelay;
       $('jitter').checked = state.jitter;
-      $('delayVal').textContent = `${state.delay} ms`;
+      refreshLabels();
       render(status);
-      setInterval(async () => render(await api('/api/status')), 600);
+      setInterval(async () => {
+        try {
+          render(await api('/api/status'));
+        } catch {
+          render({ helperReady: false, running: false, progress: 0, error: 'Lost connection to the typer. Is start.bat still running?' });
+        }
+      }, 500);
     }
 
     $('typeNow').addEventListener('click', async () => {
       clearTimeout(saveTimer);
       await api('/api/state', readForm());
-      const res = await api('/api/type', { startDelay: 5000 });
-      if (!res.ok) render({ error: res.error });
+      const res = await api('/api/type', { startDelay: COUNTDOWN_MS });
+      if (res.ok) countdownUntil = Date.now() + COUNTDOWN_MS;
+      render(res.ok ? { ...lastStatus, running: true, progress: 0, error: null } : { ...lastStatus, error: res.error });
     });
-    $('stop').addEventListener('click', () => api('/api/stop', {}));
+    $('stop').addEventListener('click', () => {
+      countdownUntil = 0;
+      api('/api/stop', {});
+    });
 
     init();
   </script>

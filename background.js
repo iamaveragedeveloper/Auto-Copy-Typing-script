@@ -1,6 +1,8 @@
-const DEFAULTS = { text: '', delay: 40, jitter: true, startDelay: 800, mode: 'char' };
+const DEFAULTS = { text: '', delay: 40, jitter: true, startDelay: 800, mode: 'char', showOnSelect: true };
+const AUTOTYPE_SECONDS = 5;
 
 const runs = new Map(); // tabId -> { stop: boolean }
+let pending = null; // the highlight-triggered countdown in progress: { source, cancelled }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -77,39 +79,28 @@ async function pressKey(send, key, code, vk, modifiers = 0) {
   await send('Input.dispatchKeyEvent', { type: 'keyUp', ...k });
 }
 
-const indentWidth = (line) => {
-  let w = 0;
-  for (const c of line) {
-    if (c === ' ') w += 1;
-    else if (c === '\t') w += 4;
-    else break;
-  }
-  return w;
-};
-
-// Code editors auto-indent each new line and auto-close brackets. Undo both so the
+// Code editors auto-indent each new line and auto-close brackets and quotes. Undo both so the
 // text ends up exactly as pasted: the line's own indentation is typed on a clean line.
 // Assumes the cursor is at the end of the document (an empty editor).
-async function typeCodeLine(send, line, isLast) {
-  if (line) await send('Input.insertText', { text: line });
-
-  const opens = (line.match(/[([{]/g) || []).length;
-  const closes = (line.match(/[)\]}]/g) || []).length;
-  if (opens > closes) {
-    // the editor probably auto-inserted closers after the cursor; the source types its own later
-    await pressKey(send, 'End', 'End', 35, 8); // Shift+End
+async function typeCodeLine(send, line, isFirst, isLast) {
+  if (!isFirst) {
+    // drop whatever indentation the editor inserted after Enter; the line brings its own
+    await pressKey(send, 'Home', 'Home', 36, 8); // Shift+Home
     await pressKey(send, 'Delete', 'Delete', 46);
   }
 
-  if (isLast) return;
-  await send('Input.insertText', { text: '\n' });
-
-  const width = indentWidth(line);
-  if (width > 0 || /[:{(\[]\s*$/.test(line)) {
-    // Shift+Tab outdents one level and does nothing on an unindented line
-    const presses = Math.min(30, Math.ceil(width / 2) + 2);
-    for (let i = 0; i < presses; i++) await pressKey(send, 'Tab', 'Tab', 9, 8);
+  if (line) {
+    await send('Input.insertText', { text: line });
+    // a space closes any autocomplete popup, so Enter inserts a newline instead of accepting a suggestion
+    await send('Input.insertText', { text: ' ' });
+    await pressKey(send, 'Backspace', 'Backspace', 8);
   }
+
+  // the cursor is at the end of the document, so anything after it is auto-closed brackets or quotes
+  await pressKey(send, 'End', 'End', 35, 8); // Shift+End
+  await pressKey(send, 'Delete', 'Delete', 46);
+
+  if (!isLast) await typeChar(send, '\n');
 }
 
 async function loop(tabId, s, run) {
@@ -127,7 +118,7 @@ async function loop(tabId, s, run) {
       if (run.stop) break;
 
       const unit = units[i];
-      if (s.mode === 'line') await typeCodeLine(send, unit, i === units.length - 1);
+      if (s.mode === 'line') await typeCodeLine(send, unit, i === 0, i === units.length - 1);
       else await typeChar(send, unit);
 
       const percent = Math.floor(((i + 1) / units.length) * 100);
@@ -175,6 +166,46 @@ async function startTyping(tabId, settings) {
   return { ok: true };
 }
 
+function sendCountdown(source, left) {
+  chrome.tabs.sendMessage(source.tabId, { type: 'countdown', left }, { frameId: source.frameId }).catch(() => {});
+}
+
+function cancelAutotype() {
+  if (!pending) return;
+  pending.cancelled = true;
+  sendCountdown(pending.source, null);
+  chrome.action.setBadgeText({ text: '' }).catch(() => {});
+  pending = null;
+}
+
+// The highlighted text becomes the saved text, then after the countdown it is typed into
+// whichever tab is active by then (usually the one you switched to while it counted down).
+async function beginAutotype(text, isCode, source) {
+  cancelAutotype();
+  const job = { source, cancelled: false };
+  pending = job;
+  await chrome.storage.local.set({ text, mode: isCode ? 'line' : 'char' });
+
+  for (let left = AUTOTYPE_SECONDS; left > 0; left--) {
+    if (job.cancelled) return;
+    sendCountdown(source, left);
+    chrome.action.setBadgeBackgroundColor({ color: '#e8890c' }).catch(() => {});
+    chrome.action.setBadgeText({ text: String(left) }).catch(() => {});
+    await sleep(1000);
+  }
+  if (job.cancelled) return;
+
+  pending = null;
+  sendCountdown(source, null);
+  chrome.action.setBadgeText({ text: '' }).catch(() => {});
+
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  if (!tab || runs.has(tab.id)) return;
+  const settings = { ...DEFAULTS, ...(await chrome.storage.local.get(DEFAULTS)), text, startDelay: 0 };
+  const res = await startTyping(tab.id, settings);
+  if (!res.ok) await flagError(tab.id, res.error);
+}
+
 chrome.debugger.onDetach.addListener((source) => {
   const run = runs.get(source.tabId);
   if (run) run.stop = true; // user clicked Cancel on the "debugging" bar
@@ -185,7 +216,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     startTyping(msg.tabId, { ...DEFAULTS, ...msg.settings }).then(sendResponse);
     return true;
   }
+  if (msg.type === 'autotype' && sender.tab && msg.text) {
+    beginAutotype(msg.text, !!msg.isCode, { tabId: sender.tab.id, frameId: sender.frameId });
+    sendResponse({ ok: true });
+  }
+  if (msg.type === 'selection' && msg.text) {
+    // every highlight becomes the text to type, in code mode when it looks like code
+    chrome.storage.local.set({ text: msg.text, mode: msg.isCode ? 'line' : 'char' });
+  }
+  if (msg.type === 'cancel-autotype') {
+    cancelAutotype();
+    sendResponse({ ok: true });
+  }
   if (msg.type === 'stop') {
+    cancelAutotype();
     const tabId = msg.tabId ?? sender.tab?.id;
     const run = runs.get(tabId);
     if (run) run.stop = true;
@@ -195,6 +239,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 chrome.commands.onCommand.addListener(async (command) => {
   if (command !== 'type-saved') return;
+  if (pending) return cancelAutotype();
 
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab) return;

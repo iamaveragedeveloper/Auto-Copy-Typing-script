@@ -1,4 +1,4 @@
-const DEFAULTS = { text: '', delay: 40, jitter: true, startDelay: 800, mode: 'char' };
+const DEFAULTS = { text: '', delay: 40, jitter: true, startDelay: 800, mode: 'char', showOnSelect: true };
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -7,6 +7,7 @@ const els = {
   jitter: $('jitter'),
   startDelay: $('startDelay'),
   mode: $('mode'),
+  showOnSelect: $('showOnSelect'),
 };
 
 const readSettings = () => ({
@@ -15,6 +16,7 @@ const readSettings = () => ({
   jitter: els.jitter.checked,
   startDelay: Number(els.startDelay.value) || 0,
   mode: els.mode.value,
+  showOnSelect: els.showOnSelect.checked,
 });
 
 const showError = (msg) => ($('status').textContent = msg);
@@ -32,6 +34,7 @@ async function init() {
   els.jitter.checked = saved.jitter;
   els.startDelay.value = saved.startDelay;
   els.mode.value = saved.mode;
+  els.showOnSelect.checked = saved.showOnSelect;
   $('delayVal').textContent = `${saved.delay} ms`;
 }
 
