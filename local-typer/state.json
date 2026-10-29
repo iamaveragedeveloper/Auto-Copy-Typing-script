@@ -1,7 +1,7 @@
 {
-  "text": "def order_event_stream(n):\n    for i in range(1, n + 1):\n        yield f\"order_{i}\"\n\ndef solve(input_str):\n    tokens = input_str.split()\n    if not tokens:\n        return \"\"\n    n = int(tokens[0])\n    lines = []\n    for event in order_event_stream(n):\n        lines.append(f\"Processing event: {event}\")\n    return \"\\n\".join(lines)\n\nif __name__ == \"__main__\":\n    import sys\n    input_str = sys.stdin.read()\n    print(solve(input_str.strip()))",
+  "text": "import re\n\ndef order_event_stream(n):\n    for i in range(1, n + 1):\n        yield f\"order_{i}\"\n\ndef solve(input_str):\n    match = re.search(r\"\\d+\", input_str)\n    if not match:\n        return \"\"\n    n = int(match.group())\n    lines = []\n    for event in order_event_stream(n):\n        lines.append(f\"Processing event: {event}\")\n    return \"\\n\".join(lines)\n\nif __name__ == \"__main__\":\n    import sys\n    input_str = sys.stdin.read()\n    if not input_str.strip() and len(sys.argv) > 1:\n        input_str = \" \".join(sys.argv[1:])\n    print(solve(input_str.strip()))",
   "mode": "code",
-  "delay": 0,
+  "delay": 10,
   "jitter": true,
   "startDelay": 300
 }
