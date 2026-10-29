@@ -5,8 +5,8 @@ Types your text into places that block pasting, using real keystrokes. Two tools
 | | Chrome extension | Local typer (Windows) |
 |---|---|---|
 | Works in | Pages in Chrome / Edge | Any window: browsers, desktop apps, remote sessions |
-| Input | Highlight text on a page, or paste into the popup | Paste into a page on `localhost:8765` |
-| Start | "Type in 5s" button, popup, or **Alt+Q** | "Type in 5 seconds" button or the hotkey (**Alt+Q**) |
+| Input | Highlight text on a page (starts a 5s timer), or paste into the popup | Paste into a page on `localhost:8765` |
+| Start | Automatic on highlight (with the typer), "Type in 5s" button, popup | "Type in 5 seconds" button or the hotkey (**Alt+Q**) |
 | Needs | Nothing to install beyond loading it | [Node.js](https://nodejs.org) and Windows |
 | Together | Detects the local typer when it runs and sends typing through it, so highlights can be typed into any app | Optional: everything works without the extension |
 
@@ -17,26 +17,25 @@ Types your text into places that block pasting, using real keystrokes. Two tools
 1. Open `chrome://extensions` (or `edge://extensions`) and turn on **Developer mode**.
 2. Click **Load unpacked** and pick this repository's folder.
 
-### Use it
+### Use it (with the local typer running)
 
-1. **Highlight** the text or code you want typed, on any page. A **Type in 5s** button appears next to the highlight.
-2. The highlight automatically becomes the text to type (code is detected and switches to *code editor* mode).
-3. Click **Type in 5s**, then switch to the page you want typed into and click inside the field. A countdown shows on the page and on the extension icon.
-4. When it reaches 0 the text is typed into the active tab.
+1. Start `local-typer\start.bat` once and leave its window open.
+2. **Highlight** the text or code you want typed, on any page (a browser editor like Monaco, Ace or CodeMirror works too).
+3. A countdown banner appears: **5, 4, 3...** Switch to **any app** (Notepad, an IDE, a terminal, another browser) and click where the text should go.
+4. When it reaches 0 the text is typed there. Code is detected and typed in *code editor* mode.
 
-Stop at any time with **Esc**, **Alt+Q**, or the popup's **Stop** button. The popup also lets you paste text by hand, change the speed, and turn the highlight button off.
+Cancel with **Cancel** on the banner, **Esc**, or the typer's **Alt+Q** hotkey. The popup lets you paste text by hand, change the speed, and turn the highlight reaction or the automatic timer off.
 
-Highlights are read from normal page text, text boxes, and the Monaco, Ace and CodeMirror editors.
+### Without the local typer
 
-### Typing into other apps (optional)
+The extension still works on its own, but only inside the browser. Highlighting shows a **Type in 5s** button instead of starting by itself; click it, switch to another tab, click into the field, and it types into that tab when the countdown ends. To type into other apps you need the local typer.
 
-On its own the extension can only type inside the browser. If you also run the **local typer** (below), the extension connects to it and the same **Type in 5s** button types into **any Windows app**: switch to the app during the countdown and click into its field.
+### How the extension and the local typer connect
 
-- It is optional. Without the local typer nothing changes: typing stays in the browser.
-- It connects by itself: when you start `start.bat` it opens `http://localhost:8765`, and the extension picks up that run's access token from the page. If your default browser isn't the one with the extension, open `http://localhost:8765` in it once (the popup has a link). The token changes every time the typer restarts.
-- The popup shows whether it is connected, and **Type into → This browser tab only** switches it off.
-- Only that page can hand the token over, and the typer rejects every request that doesn't carry it, so other websites and extensions can't drive it.
+- Nothing to pair. The extension has a fixed ID (set by the `key` in `manifest.json`) and the typer trusts requests from exactly that ID. Websites and other extensions can't fake it, and the typer refuses everyone else without its access token.
+- It is optional in both directions: the typer works without the extension, and the extension works without the typer. The popup shows whether it is connected, and **Type into â†’ This browser tab only** switches the link off.
 - The typer's default port is 8765. If you change `PORT`, the extension won't find it.
+- If you loaded an older version of the extension before, remove it at `chrome://extensions` and **Load unpacked** again: the fixed ID changes the extension's identity once.
 
 ### Modes
 

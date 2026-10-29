@@ -1,4 +1,4 @@
-const DEFAULTS = { text: '', delay: 40, jitter: true, startDelay: 800, mode: 'char', showOnSelect: true, target: 'auto' };
+const DEFAULTS = { text: '', delay: 40, jitter: true, startDelay: 800, mode: 'char', showOnSelect: true, target: 'auto', autoStart: true };
 const AUTOTYPE_SECONDS = 5;
 
 const runs = new Map(); // tabId -> { stop: boolean }
@@ -213,6 +213,12 @@ async function useTyper(settings) {
 
 // Hands the text to the typer; it waits startDelayMs, then types into whatever window is active.
 async function startViaTyper(settings, startDelayMs) {
+  const current = await typerApi('/api/status');
+  if (current.running) {
+    // a new highlight replaces a run that is still going
+    await typerApi('/api/stop', {});
+    await sleep(600);
+  }
   await typerApi('/api/state', typerSettings(settings));
   const res = await typerApi('/api/type', { startDelay: startDelayMs });
   return res.ok ? { ok: true } : { ok: false, error: res.error || 'Local typer could not start.' };
@@ -238,8 +244,8 @@ async function followTyper(tabId) {
   }
 }
 
-function sendCountdown(source, left, via) {
-  chrome.tabs.sendMessage(source.tabId, { type: 'countdown', left, via }, { frameId: source.frameId }).catch(() => {});
+function sendCountdown(source, left, via, chars) {
+  chrome.tabs.sendMessage(source.tabId, { type: 'countdown', left, via, chars }, { frameId: source.frameId }).catch(() => {});
 }
 
 function cancelAutotype() {
@@ -272,7 +278,7 @@ async function runAutotype(text, isCode, source) {
   cancelAutotype();
   const job = { source, cancelled: false, viaTyper: false };
   pending = job;
-  sendCountdown(source, AUTOTYPE_SECONDS); // acknowledge the click right away
+  sendCountdown(source, AUTOTYPE_SECONDS, undefined, text.length); // acknowledge right away
   const saved = { mode: isCode ? 'line' : 'char' };
   await chrome.storage.local.set({ text, ...saved });
   const settings = { ...DEFAULTS, ...(await chrome.storage.local.get(DEFAULTS)), text, ...saved };
@@ -291,7 +297,7 @@ async function runAutotype(text, isCode, source) {
 
   for (let left = AUTOTYPE_SECONDS; left > 0; left--) {
     if (job.cancelled) return;
-    sendCountdown(source, left, via);
+    sendCountdown(source, left, via, text.length);
     chrome.action.setBadgeBackgroundColor({ color: '#e8890c' }).catch(() => {});
     chrome.action.setBadgeText({ text: String(left) }).catch(() => {});
     await sleep(1000);
@@ -342,14 +348,22 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     sendResponse({ ok: true });
   }
   if (msg.type === 'selection' && msg.text) {
-    // every highlight becomes the text to type, in code mode when it looks like code
-    const saved = { text: msg.text, mode: msg.isCode ? 'line' : 'char' };
-    chrome.storage.local.set(saved);
-    // keep the local typer's saved text in step too, so its hotkey types the highlight in any app
-    chrome.storage.local.get(DEFAULTS).then(async (stored) => {
-      const settings = { ...DEFAULTS, ...stored, ...saved };
-      if (await useTyper(settings)) typerApi('/api/state', typerSettings(settings)).catch(() => {});
-    });
+    // Every highlight becomes the text to type (code mode when it looks like code). With the local typer
+    // connected it also starts the 5-second timer by itself, so no click is needed and it types into any app.
+    (async () => {
+      const saved = { text: msg.text, mode: msg.isCode ? 'line' : 'char' };
+      await chrome.storage.local.set(saved);
+      const settings = { ...DEFAULTS, ...(await chrome.storage.local.get(DEFAULTS)), ...saved };
+      if (!(await useTyper(settings))) return { auto: false };
+      if (settings.autoStart && sender.tab) {
+        beginAutotype(msg.text, !!msg.isCode, { tabId: sender.tab.id, frameId: sender.frameId });
+        return { auto: true };
+      }
+      // keep the typer's saved text in step, so its own hotkey types the highlight in any app
+      typerApi('/api/state', typerSettings(settings)).catch(() => {});
+      return { auto: false };
+    })().then(sendResponse);
+    return true;
   }
   if (msg.type === 'cancel-autotype') {
     cancelAutotype();

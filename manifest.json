@@ -1,7 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Copy Paste Typer",
-  "version": "2.2.0",
+  "version": "2.3.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAjX2ydc6nozB7BehS0nC4K2wW1D3520AhhRF9Zx1v7P1bP3DM08VMZ3jjgzbIGVBMoBQxAS0agJ44H2PACbM64y8ctVgzBFfvSMt2AjikElxP0cZ7T578am/gbdp6j1Qf1E6FDovkoleno8aExOoQ72YD73D73SwOypPHfhto/xXR2uRCR3e7CEgVWPHF1CWolrzdVvRoFNBGXX1VyjJn2LTdh+E7W/nb3/JX0uHba24444WBspLzXAhYtz/fu49TA5WP6TW18pfA96edXHgfY2JwhJYh/N0Hbmz+ZmanJDF/ZmCP6XPqdww62z4Z8tARRTjfJI+jBGoRt9Mpj7rrtQIDAQAB",
   "description": "Types your text into fields that block pasting, using real keystrokes.",
   "permissions": ["storage", "scripting", "activeTab", "debugger"],
   "host_permissions": ["http://127.0.0.1:8765/*"],

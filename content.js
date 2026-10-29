@@ -17,6 +17,7 @@
   let counting = false;
   let enabled = true;
   let current = null; // { text, rect } of the highlight the button is offered for
+  let buttonShown = false;
 
   const send = (msg) => {
     try {
@@ -140,6 +141,7 @@
   }
 
   function hide() {
+    buttonShown = false;
     if (ui) ui.card.classList.remove('show', 'counting');
   }
 
@@ -160,9 +162,11 @@
       ui.tipText.textContent = `Click Type in ${AUTOTYPE_SECONDS}s, then go to the target place and click inside the field.`;
       runtime.sendMessage({ type: 'typer-status' }).then((state) => {
         if (state === 'ready') ui.tipText.textContent = `Click Type in ${AUTOTYPE_SECONDS}s, then go to any app and click inside the field.`;
+        else if (state === 'off') ui.tipText.textContent = `Click Type in ${AUTOTYPE_SECONDS}s to type into this browser. Run local-typer/start.bat to type into any app automatically.`;
       }).catch(() => {});
     }
     ui.card.classList.add('show');
+    buttonShown = true;
     place(rect);
   }
 
@@ -175,13 +179,14 @@
   let errorShown = false;
   let errorTimer;
 
-  function showCountdown(left, via) {
+  function showCountdown(left, via, chars) {
     if (!host) build();
     counting = true;
     errorShown = false;
     clearTimeout(errorTimer);
     ui.cancel.textContent = 'Cancel';
     ui.num.textContent = left;
+    if (chars) ui.hint.textContent = `${chars.toLocaleString()} character${chars === 1 ? '' : 's'} · click where it should be typed`;
     ui.msgTitle.textContent = via === 'typer' ? 'Go to any app now' : 'Go to the target place now';
     ui.card.classList.add('show', 'counting');
     placeInCorner();
@@ -279,7 +284,8 @@
     };
   }
 
-  // The highlight becomes the text to type right away (Alt+Q and the popup use it too), as code mode when it looks like code.
+  // A highlight becomes the text to type (code mode when it looks like code). background.js answers whether it
+  // started the 5-second timer by itself (local typer connected); if not, the "Type in 5s" button is offered.
   let sentKey = null;
   let sentTimer;
   function publish(s) {
@@ -288,7 +294,18 @@
       const key = `${s.code ? 'code' : 'text'}:${s.text}`;
       if (key === sentKey) return;
       sentKey = key;
-      send({ type: 'selection', text: s.text, isCode: s.code });
+      try {
+        if (!window.__cpTyperAlive()) throw new Error('reloaded');
+        runtime
+          .sendMessage({ type: 'selection', text: s.text, isCode: s.code })
+          .then((res) => {
+            if (res && res.auto) return;
+            if (current && current.text === s.text && !counting) showAt(current.rect, { chars: s.text.length, code: s.code });
+          })
+          .catch(() => showReloadedError());
+      } catch {
+        showReloadedError();
+      }
     }, 350);
   }
 
@@ -298,10 +315,12 @@
     if (s && s.text.trim()) {
       s.text = cleanText(s.text);
       current = s;
-      showAt(s.rect, { chars: s.text.length, code: s.code });
+      if (buttonShown) showAt(s.rect, { chars: s.text.length, code: s.code }); // keep the button next to the highlight
       publish(s);
     } else {
       current = null;
+      sentKey = null; // highlighting the same text again later starts a new run
+      clearTimeout(sentTimer);
       hide();
     }
   }
@@ -332,7 +351,7 @@
       heard = true;
       if (errorShown) return;
       if (msg.left) {
-        showCountdown(msg.left, msg.via);
+        showCountdown(msg.left, msg.via, msg.chars);
       } else {
         counting = false;
         hide();

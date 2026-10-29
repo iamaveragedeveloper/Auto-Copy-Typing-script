@@ -13,6 +13,7 @@ const HOTKEY = process.env.HOTKEY || 'Alt+Q';
 const STATE_FILE = path.join(__dirname, 'state.json');
 const TOKEN = crypto.randomBytes(24).toString('hex');
 const ALLOWED_HOSTS = new Set([`127.0.0.1:${PORT}`, `localhost:${PORT}`]);
+const EXTENSION_ID = 'hkoeibhbmihepmlljhjffbfppdopogkf'; // the Copy Paste Typer extension; see "key" in ../manifest.json
 
 const DEFAULT_STATE = { text: '', mode: 'code', delay: 30, jitter: true, startDelay: 300 };
 
@@ -159,10 +160,10 @@ function readBody(req) {
 const server = http.createServer(async (req, res) => {
   // Block other websites (and DNS-rebinding tricks) from driving a local service that types keystrokes.
   if (!ALLOWED_HOSTS.has(req.headers.host)) return send(res, 403, { error: 'Bad host' });
-  // The optional browser extension calls in from a chrome-extension:// origin. Websites can't forge that
-  // origin, and every /api/ call below still needs the token, which only this server's own page contains.
+  // The optional browser extension has a fixed ID (pinned by the "key" in its manifest) and calls in from that
+  // chrome-extension:// origin. Websites can't forge an extension origin, so it needs no token; everyone else does.
   const origin = req.headers.origin;
-  const fromExtension = !!origin && origin.startsWith('chrome-extension://');
+  const fromExtension = origin === `chrome-extension://${EXTENSION_ID}`;
   if (origin && !fromExtension && !ALLOWED_HOSTS.has(origin.replace(/^https?:\/\//, ''))) return send(res, 403, { error: 'Bad origin' });
 
   const url = req.url.split('?')[0];
@@ -176,7 +177,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && url === '/api/hello') return send(res, 200, { app: 'copy-paste-typer' });
 
   if (!url.startsWith('/api/')) return send(res, 404, { error: 'Not found' });
-  if (req.headers['x-token'] !== TOKEN) return send(res, 403, { error: 'Bad token' });
+  if (req.headers['x-token'] !== TOKEN && !fromExtension) return send(res, 403, { error: 'Bad token' });
 
   try {
     if (req.method === 'GET' && url === '/api/state') return send(res, 200, { state, status, hotkey: HOTKEY });

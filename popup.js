@@ -1,4 +1,4 @@
-const DEFAULTS = { text: '', delay: 40, jitter: true, startDelay: 800, mode: 'char', showOnSelect: true, target: 'auto' };
+const DEFAULTS = { text: '', delay: 40, jitter: true, startDelay: 800, mode: 'char', showOnSelect: true, target: 'auto', autoStart: true };
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -9,6 +9,7 @@ const els = {
   mode: $('mode'),
   showOnSelect: $('showOnSelect'),
   target: $('target'),
+  autoStart: $('autoStart'),
 };
 
 const readSettings = () => ({
@@ -19,6 +20,7 @@ const readSettings = () => ({
   mode: els.mode.value,
   showOnSelect: els.showOnSelect.checked,
   target: els.target.value,
+  autoStart: els.autoStart.checked,
 });
 
 const showError = (msg) => ($('status').textContent = msg);
@@ -38,6 +40,7 @@ async function init() {
   els.mode.value = saved.mode;
   els.showOnSelect.checked = saved.showOnSelect;
   els.target.value = saved.target;
+  els.autoStart.checked = saved.autoStart;
   showTyperStatus();
   $('delayVal').textContent = `${saved.delay} ms`;
 }
@@ -47,9 +50,9 @@ async function showTyperStatus() {
   const el = $('typerStatus');
   const state = await chrome.runtime.sendMessage({ type: 'typer-status' }).catch(() => 'off');
   if (state === 'ready') {
-    el.textContent = 'Local typer connected: highlighted text can be typed into any app.';
+    el.textContent = 'Local typer connected: highlight text anywhere and it is typed into any app 5 seconds later.';
   } else if (state === 'unpaired') {
-    el.innerHTML = 'Local typer is running but not connected to this browser. <a href="#" id="pair">Open its page once</a> to connect.';
+    el.innerHTML = 'Local typer is running but did not accept this extension. <a href="#" id="pair">Open its page</a>, and make sure the extension ID matches the one in local-typer/server.js.';
     $('pair').addEventListener('click', (e) => {
       e.preventDefault();
       chrome.tabs.create({ url: 'http://localhost:8765' });
