@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Copy Paste Typer</title>
+  <style>
+    :root { color-scheme: light dark; --muted: #888; --err: #c33; --ok: #2a7; }
+    body { max-width: 720px; margin: 24px auto; padding: 0 16px; font: 14px/1.5 system-ui, sans-serif; }
+    h1 { font-size: 18px; margin: 0 0 4px; }
+    textarea { width: 100%; height: 340px; box-sizing: border-box; padding: 8px; font: 13px/1.4 Consolas, monospace; tab-size: 4; resize: vertical; }
+    .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px 16px; margin-top: 12px; }
+    label { display: flex; align-items: center; gap: 8px; }
+    select, input[type=number] { font: inherit; }
+    input[type=range] { flex: 1; }
+    .row { display: flex; gap: 8px; margin-top: 14px; }
+    button { padding: 8px 14px; font: inherit; cursor: pointer; }
+    button.primary { font-weight: 600; }
+    #status { margin-top: 12px; min-height: 1.5em; }
+    #status.err { color: var(--err); }
+    #status.ok { color: var(--ok); }
+    .muted { color: var(--muted); font-size: 13px; }
+    kbd { padding: 1px 6px; border: 1px solid var(--muted); border-radius: 4px; font: inherit; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Copy Paste Typer</h1>
+  <p class="muted">Paste your text, click into the other app's text field, then press <kbd id="hotkey"></kbd>. Press it again to stop.</p>
+
+  <textarea id="text" placeholder="Paste the text you want typed here…" spellcheck="false"></textarea>
+
+  <div class="controls">
+    <label>
+      <span>Mode</span>
+      <select id="mode">
+        <option value="code">Code editor (line by line)</option>
+        <option value="char">Plain text (letter by letter)</option>
+      </select>
+    </label>
+    <label>
+      <span>Delay</span>
+      <input id="delay" type="range" min="0" max="300" step="5">
+      <span id="delayVal"></span>
+    </label>
+    <label>
+      <span>Start after</span>
+      <input id="startDelay" type="number" min="0" max="30000" step="100" style="width:80px"> ms
+    </label>
+    <label><input id="jitter" type="checkbox"> Vary the timing randomly</label>
+  </div>
+
+  <div class="row">
+    <button id="typeNow" class="primary">Type in 5 seconds</button>
+    <button id="stop">Stop</button>
+  </div>
+  <div id="status"></div>
+
+  <p class="muted">
+    Code editor mode types each line, then clears the editor's auto-indent and auto-closed brackets so the result matches
+    your text. Click at the end of an <b>empty</b> editor first. "Type in 5 seconds" gives you time to switch windows.
+  </p>
+
+  <script>
+    const TOKEN = '__TOKEN__';
+    const $ = (id) => document.getElementById(id);
+    const fields = ['text', 'mode', 'delay', 'startDelay', 'jitter'].map($);
+
+    async function api(path, body) {
+      const res = await fetch(path, {
+        method: body === undefined ? 'GET' : 'POST',
+        headers: { 'X-Token': TOKEN, 'Content-Type': 'application/json' },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      return res.json();
+    }
+
+    const readForm = () => ({
+      text: $('text').value,
+      mode: $('mode').value,
+      delay: Number($('delay').value),
+      startDelay: Number($('startDelay').value) || 0,
+      jitter: $('jitter').checked,
+    });
+
+    let saveTimer;
+    const scheduleSave = () => {
+      $('delayVal').textContent = `${$('delay').value} ms`;
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => api('/api/state', readForm()), 300);
+    };
+    fields.forEach((el) => el.addEventListener('input', scheduleSave));
+
+    function render(status) {
+      const el = $('status');
+      el.className = '';
+      if (status.error) {
+        el.textContent = status.error;
+        el.className = 'err';
+      } else if (status.running) {
+        el.textContent = `Typing… ${status.progress}%`;
+        el.className = 'ok';
+      } else if (!status.helperReady) {
+        el.textContent = 'Starting typing helper…';
+      } else {
+        el.textContent = 'Ready.';
+      }
+    }
+
+    async function init() {
+      const { state, status, hotkey } = await api('/api/state');
+      $('hotkey').textContent = hotkey;
+      $('text').value = state.text;
+      $('mode').value = state.mode;
+      $('delay').value = state.delay;
+      $('startDelay').value = state.startDelay;
+      $('jitter').checked = state.jitter;
+      $('delayVal').textContent = `${state.delay} ms`;
+      render(status);
+      setInterval(async () => render(await api('/api/status')), 600);
+    }
+
+    $('typeNow').addEventListener('click', async () => {
+      clearTimeout(saveTimer);
+      await api('/api/state', readForm());
+      const res = await api('/api/type', { startDelay: 5000 });
+      if (!res.ok) render({ error: res.error });
+    });
+    $('stop').addEventListener('click', () => api('/api/stop', {}));
+
+    init();
+  </script>
+</body>
+</html>

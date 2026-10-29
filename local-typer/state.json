@@ -1,0 +1,7 @@
+{
+  "text": "\ndef solve(input_str):\n    a = list(map(float, input_str.split()))\n    n = int(a[0])\n    t = a[1:n+1]\n\n    print(f\"Average: {sum(t)/n:.2f} Highest: {max(t):.2f} Lowest: {min(t):.2f}\")\n\nif __name__ == \"__main__\":\n    import sys\n    solve(sys.stdin.read())\n",
+  "mode": "code",
+  "delay": 0,
+  "jitter": true,
+  "startDelay": 300
+}
