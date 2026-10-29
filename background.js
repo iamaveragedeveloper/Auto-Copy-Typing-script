@@ -237,6 +237,7 @@ function stopTyper() {
 
 // Mirrors the typer's progress on the toolbar badge until it finishes.
 async function followTyper(tabId) {
+  let target = null;
   for (;;) {
     await sleep(500);
     let st;
@@ -246,7 +247,12 @@ async function followTyper(tabId) {
       return;
     }
     if (st.error) return reportFailure({ tabId }, st.error);
-    if (!st.running) return chrome.action.setBadgeText({ text: '', tabId }).catch(() => {});
+    if (st.target) target = st.target;
+    if (!st.running) {
+      chrome.action.setBadgeText({ text: '', tabId }).catch(() => {});
+      // say where the text went, so a run that "typed nothing" can be traced to the window that got it
+      return chrome.tabs.sendMessage(tabId, { type: 'autotype-done', target }).catch(() => {});
+    }
     showProgress(tabId, st.progress);
   }
 }

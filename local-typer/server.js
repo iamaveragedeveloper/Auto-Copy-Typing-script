@@ -57,7 +57,7 @@ function parseHotkey(spec) {
   return { modMask, vk };
 }
 
-const status = { helperReady: false, running: false, progress: 0, error: null };
+const status = { helperReady: false, running: false, progress: 0, error: null, target: null };
 let helper = null;
 
 function startHelper() {
@@ -111,6 +111,9 @@ function handleHelperLine(line) {
     status.running = true;
     status.progress = 0;
     status.error = null;
+  } else if (line.startsWith('TARGET ')) {
+    status.target = line.slice(7); // where the text is being typed: process name and window title
+    console.log('Typing into', status.target);
   } else if (line.startsWith('PROGRESS ')) {
     status.progress = Number(line.slice(9));
   } else if (line === 'DONE') {

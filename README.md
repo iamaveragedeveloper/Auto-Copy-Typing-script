@@ -63,6 +63,7 @@ Opens `http://localhost:8765`. Paste your text, pick a mode and speed, click int
 - Use *code editor* mode in code editors, *plain text* everywhere else.
 - Start from an empty editor with the cursor at the end.
 - Close any old `start.bat` window before starting a new one.
+- If the countdown runs but nothing appears: when a run finishes, the banner says which window the text was typed into. If that isn't the window you meant, click into the right one during the countdown. If the app you're typing into runs **as administrator**, Windows silently blocks keystrokes from a normal program, and the typer will say so; start `start.bat` as administrator too (right-click → Run as administrator).
 
 ## Layout
 

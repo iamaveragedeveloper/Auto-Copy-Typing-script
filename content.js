@@ -193,13 +193,14 @@
     placeInCorner();
   }
 
-  function showError(text) {
+  // One message pill for both failures and the "finished" note (which says which window got the text).
+  function showError(text, title = "Couldn't start typing", icon = '!') {
     if (!host) build();
     counting = true;
     errorShown = true;
     ui.cancel.textContent = 'Close';
-    ui.num.textContent = '!';
-    ui.msgTitle.textContent = "Couldn't start typing";
+    ui.num.textContent = icon;
+    ui.msgTitle.textContent = title;
     ui.hint.textContent = text;
     ui.card.classList.add('show', 'counting');
     placeInCorner();
@@ -360,6 +361,9 @@
     } else if (msg.type === 'autotype-error') {
       heard = true;
       showError(msg.error);
+    } else if (msg.type === 'autotype-done') {
+      heard = true;
+      showError(msg.target ? `Typed into ${msg.target}` : 'Typing finished.', 'Finished typing', '✓');
     }
   });
 

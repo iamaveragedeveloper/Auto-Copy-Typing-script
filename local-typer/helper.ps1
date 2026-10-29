@@ -45,6 +45,12 @@ public class TyperHelper
     [DllImport("user32.dll")] static extern IntPtr GetKeyboardLayout(uint tid);
     [DllImport("user32.dll")] static extern short VkKeyScanEx(char ch, IntPtr hkl);
     [DllImport("user32.dll")] static extern uint MapVirtualKey(uint code, uint mapType);
+    [DllImport("user32.dll", EntryPoint = "GetWindowThreadProcessId")] static extern uint GetWindowPid(IntPtr hWnd, out uint pid);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr hWnd, StringBuilder s, int max);
+    [DllImport("kernel32.dll")] static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);
+    [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
+    [DllImport("advapi32.dll")] static extern bool OpenProcessToken(IntPtr process, uint access, out IntPtr token);
+    [DllImport("advapi32.dll")] static extern bool GetTokenInformation(IntPtr token, int infoClass, out int info, int size, out int returned);
     [DllImport("user32.dll")] static extern int ToUnicodeEx(uint vk, uint scan, byte[] keyState, [Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder buf, int cch, uint flags, IntPtr hkl);
 
     const ushort VK_BACK = 0x08, VK_TAB = 0x09, VK_RETURN = 0x0D, VK_SHIFT = 0x10;
@@ -121,6 +127,7 @@ public class TyperHelper
             {
                 targetWnd = GetForegroundWindow();
                 hkl = GetKeyboardLayout(GetWindowThreadProcessId(targetWnd, IntPtr.Zero));
+                DescribeTarget(targetWnd);
                 text = text.Replace("\r\n", "\n").Replace('\r', '\n').TrimEnd('\n');
                 lastPct = -1;
                 if (mode == "code") TypeCode(text, delay, jitter);
@@ -133,6 +140,42 @@ public class TyperHelper
         }
         typing = false;
         Out("DONE");
+    }
+
+    // Windows silently drops keystrokes sent from a normal program into an app running as administrator.
+    // Only reports true when the process could be inspected and really is elevated.
+    static bool IsElevated(uint pid)
+    {
+        IntPtr proc = OpenProcess(0x1000, false, pid); // PROCESS_QUERY_LIMITED_INFORMATION
+        if (proc == IntPtr.Zero) return false;
+        try
+        {
+            IntPtr token;
+            if (!OpenProcessToken(proc, 0x8, out token)) return false; // TOKEN_QUERY
+            try
+            {
+                int elevated, returned;
+                return GetTokenInformation(token, 20, out elevated, 4, out returned) && elevated != 0; // TokenElevation
+            }
+            finally { CloseHandle(token); }
+        }
+        finally { CloseHandle(proc); }
+    }
+
+    // Reports where the text is about to go, and refuses when Windows would swallow it.
+    static void DescribeTarget(IntPtr wnd)
+    {
+        uint pid;
+        GetWindowPid(wnd, out pid);
+        StringBuilder title = new StringBuilder(256);
+        GetWindowText(wnd, title, 256);
+        string name = "";
+        try { name = System.Diagnostics.Process.GetProcessById((int)pid).ProcessName; } catch { }
+        bool targetAdmin = pid != 0 && IsElevated(pid);
+        bool selfAdmin = IsElevated((uint)System.Diagnostics.Process.GetCurrentProcess().Id);
+        Out("TARGET " + name + (title.Length > 0 ? ": " + title.ToString().Replace('\n', ' ').Replace('\r', ' ') : "") + (targetAdmin ? " (administrator)" : ""));
+        if (targetAdmin && !selfAdmin)
+            throw new Exception("The app you are typing into (" + name + ") runs as administrator, so Windows blocks the keystrokes. Start start.bat as administrator too.");
     }
 
     static void WaitForModifiersReleased()
