@@ -186,11 +186,18 @@ async function typerApi(path, body) {
   return res.json();
 }
 
-// 'off' (not running), 'unpaired' (running, but this browser has no valid token), or 'ready'
+// 'off' (nothing there), 'rejected' (a typer answers but refuses this extension: an older copy, or a different
+// extension ID), 'unpaired' (accepted, but no valid token), or 'ready'
 async function typerState() {
+  let res;
   try {
-    const hello = await (await fetch(TYPER_URL + '/api/hello', { signal: AbortSignal.timeout(1000) })).json();
-    if (hello.app !== 'copy-paste-typer') return 'off';
+    res = await fetch(TYPER_URL + '/api/hello', { signal: AbortSignal.timeout(1000) });
+  } catch {
+    return 'off';
+  }
+  if (res.status === 403) return 'rejected';
+  try {
+    if ((await res.json()).app !== 'copy-paste-typer') return 'off';
   } catch {
     return 'off';
   }

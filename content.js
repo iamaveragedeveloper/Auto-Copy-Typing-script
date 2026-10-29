@@ -162,6 +162,7 @@
       ui.tipText.textContent = `Click Type in ${AUTOTYPE_SECONDS}s, then go to the target place and click inside the field.`;
       runtime.sendMessage({ type: 'typer-status' }).then((state) => {
         if (state === 'ready') ui.tipText.textContent = `Click Type in ${AUTOTYPE_SECONDS}s, then go to any app and click inside the field.`;
+        else if (state === 'rejected' || state === 'unpaired') ui.tipText.textContent = 'The local typer is running but refused this extension (see the extension popup for the fix). Click Type in 5s to type into this browser meanwhile.';
         else if (state === 'off') ui.tipText.textContent = `Click Type in ${AUTOTYPE_SECONDS}s to type into this browser. Run local-typer/start.bat to type into any app automatically.`;
       }).catch(() => {});
     }

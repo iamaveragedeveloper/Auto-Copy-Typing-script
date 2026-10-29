@@ -51,6 +51,8 @@ async function showTyperStatus() {
   const state = await chrome.runtime.sendMessage({ type: 'typer-status' }).catch(() => 'off');
   if (state === 'ready') {
     el.textContent = 'Local typer connected: highlight text anywhere and it is typed into any app 5 seconds later.';
+  } else if (state === 'rejected') {
+    el.textContent = `A local typer is running but refuses this extension. Update the local-typer folder to the latest copy and restart start.bat, and load this extension from the repository folder (its ID must be hkoeibhbmihepmlljhjffbfppdopogkf; this one is ${chrome.runtime.id}).`;
   } else if (state === 'unpaired') {
     el.innerHTML = 'Local typer is running but did not accept this extension. <a href="#" id="pair">Open its page</a>, and make sure the extension ID matches the one in local-typer/server.js.';
     $('pair').addEventListener('click', (e) => {
