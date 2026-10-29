@@ -72,10 +72,10 @@ public class TyperHelper
         HotWin win = new HotWin();
         win.CreateHandle(new CreateParams());
         // 0x4000 = MOD_NOREPEAT
+        // Typing from the page's button or the browser extension doesn't need the hotkey, so a taken hotkey is only a warning.
+        Out("READY");
         if (!RegisterHotKey(win.Handle, 1, (uint)mods | 0x4000, (uint)vk))
-            Out("ERROR hotkey is already used by another program");
-        else
-            Out("READY");
+            Out("ERROR the hotkey is already used by another program (the Type buttons still work)");
 
         Thread reader = new Thread(ReadLoop);
         reader.IsBackground = true;

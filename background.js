@@ -232,7 +232,7 @@ async function followTyper(tabId) {
     } catch {
       return;
     }
-    if (st.error) return flagError(tabId, st.error);
+    if (st.error) return reportFailure({ tabId }, st.error);
     if (!st.running) return chrome.action.setBadgeText({ text: '', tabId }).catch(() => {});
     showProgress(tabId, st.progress);
   }
@@ -253,10 +253,26 @@ function cancelAutotype() {
 
 // The highlighted text becomes the saved text, then after the countdown it is typed. With the
 // local typer connected it goes into whichever app you switched to; otherwise into the active tab.
+// Shows the reason in the on-page banner (the badge alone is easy to miss) and on the toolbar icon.
+function reportFailure(source, message) {
+  chrome.tabs.sendMessage(source.tabId, { type: 'autotype-error', error: message }, { frameId: source.frameId }).catch(() => {});
+  flagError(source.tabId, message).catch(() => {});
+}
+
 async function beginAutotype(text, isCode, source) {
+  try {
+    await runAutotype(text, isCode, source);
+  } catch (err) {
+    pending = null;
+    reportFailure(source, err.message || String(err));
+  }
+}
+
+async function runAutotype(text, isCode, source) {
   cancelAutotype();
   const job = { source, cancelled: false, viaTyper: false };
   pending = job;
+  sendCountdown(source, AUTOTYPE_SECONDS); // acknowledge the click right away
   const saved = { mode: isCode ? 'line' : 'char' };
   await chrome.storage.local.set({ text, ...saved });
   const settings = { ...DEFAULTS, ...(await chrome.storage.local.get(DEFAULTS)), text, ...saved };
@@ -267,7 +283,7 @@ async function beginAutotype(text, isCode, source) {
     if (job.cancelled) return;
     if (!res.ok) {
       pending = null;
-      return flagError(source.tabId, res.error);
+      return reportFailure(source, `Local typer: ${res.error}`);
     }
     job.viaTyper = true;
   }
@@ -291,7 +307,7 @@ async function beginAutotype(text, isCode, source) {
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   if (!tab || runs.has(tab.id)) return;
   const res = await startTyping(tab.id, { ...settings, startDelay: 0 });
-  if (!res.ok) await flagError(tab.id, res.error);
+  if (!res.ok) reportFailure(source, `${res.error} (the browser can only type into web pages; run local-typer/start.bat to type into other apps)`);
 }
 
 chrome.debugger.onDetach.addListener((source) => {

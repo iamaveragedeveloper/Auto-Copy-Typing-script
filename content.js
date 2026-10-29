@@ -81,6 +81,7 @@
         .tip { padding: 2px 4px 0; }
         .tip b { display: block; font-weight: 600; }
         .tip span { color: #b4b7c6; font-size: 12px; }
+        .card.counting { max-width: 420px; }
         .card.counting .go, .card.counting .tip { display: none; }
         .card.counting .count { display: flex; }
       </style>
@@ -113,10 +114,28 @@
     ui.go.addEventListener('click', () => {
       if (!current) return;
       const chars = current.text.length;
+      heard = false;
+      showCountdown(AUTOTYPE_SECONDS); // immediate feedback; background.js takes over the ticking
       ui.hint.textContent = `${chars.toLocaleString()} character${chars === 1 ? '' : 's'} · click inside the field to type into`;
-      send({ type: 'autotype', text: current.text, isCode: current.code });
+      try {
+        if (!window.__cpTyperAlive()) throw new Error('reloaded');
+        runtime.sendMessage({ type: 'autotype', text: current.text, isCode: current.code }).catch(() => showReloadedError());
+      } catch {
+        showReloadedError();
+      }
+      // if the extension never answers, say so instead of leaving a dead button
+      setTimeout(() => {
+        if (counting && !heard && !errorShown) showError('The extension did not respond. Refresh this page (F5), highlight again and retry.');
+      }, 2500);
     });
-    ui.cancel.addEventListener('click', () => send({ type: 'cancel-autotype' }));
+    ui.cancel.addEventListener('click', () => {
+      send({ type: 'cancel-autotype' });
+      if (errorShown) {
+        counting = false;
+        errorShown = false;
+        hide();
+      }
+    });
     (document.documentElement || document).appendChild(host);
   }
 
@@ -148,14 +167,45 @@
   }
 
   // The countdown pill sits in a corner so it never covers the field you need to click.
+  function placeInCorner() {
+    host.style.transform = `translate(${Math.max(8, window.innerWidth - ui.card.offsetWidth - 20)}px, ${Math.max(8, window.innerHeight - ui.card.offsetHeight - 20)}px)`;
+  }
+
+  let heard = false; // background.js has answered the click
+  let errorShown = false;
+  let errorTimer;
+
   function showCountdown(left, via) {
     if (!host) build();
     counting = true;
+    errorShown = false;
+    clearTimeout(errorTimer);
+    ui.cancel.textContent = 'Cancel';
     ui.num.textContent = left;
     ui.msgTitle.textContent = via === 'typer' ? 'Go to any app now' : 'Go to the target place now';
     ui.card.classList.add('show', 'counting');
-    host.style.transform = `translate(${Math.max(8, window.innerWidth - ui.card.offsetWidth - 20)}px, ${Math.max(8, window.innerHeight - ui.card.offsetHeight - 20)}px)`;
+    placeInCorner();
   }
+
+  function showError(text) {
+    if (!host) build();
+    counting = true;
+    errorShown = true;
+    ui.cancel.textContent = 'Close';
+    ui.num.textContent = '!';
+    ui.msgTitle.textContent = "Couldn't start typing";
+    ui.hint.textContent = text;
+    ui.card.classList.add('show', 'counting');
+    placeInCorner();
+    clearTimeout(errorTimer);
+    errorTimer = setTimeout(() => {
+      counting = false;
+      errorShown = false;
+      hide();
+    }, 12000);
+  }
+
+  const showReloadedError = () => showError('The extension was reloaded. Refresh this page (F5), highlight again and retry.');
 
   // --- tracking the highlight -----------------------------------------------------------
 
@@ -164,7 +214,7 @@
 
   // Copied code is full of characters that look like spaces but break compilers.
   const cleanText = (t) =>
-    t.replace(/\r\n?/g, '\n').replace(/[   ]/g, ' ').replace(/[​-‍⁠﻿]/g, '');
+    t.replace(/\r\n?/g, '\n').replace(/[\u00a0\u2007\u202f]/g, ' ').replace(/[\u200b-\u200d\u2060\ufeff]/g, '');
 
   const CODE_HINTS = [
     /[{};]\s*$/m,
@@ -279,12 +329,17 @@
       running = msg.value;
       if (running) hide();
     } else if (msg.type === 'countdown') {
+      heard = true;
+      if (errorShown) return;
       if (msg.left) {
         showCountdown(msg.left, msg.via);
       } else {
         counting = false;
         hide();
       }
+    } else if (msg.type === 'autotype-error') {
+      heard = true;
+      showError(msg.error);
     }
   });
 
