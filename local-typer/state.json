@@ -1,7 +1,7 @@
 {
-  "text": "import re\n\ndef order_event_stream(n):\n    for i in range(1, n + 1):\n        yield f\"order_{i}\"\n\ndef solve(input_str):\n    match = re.search(r\"\\d+\", input_str)\n    if not match:\n        return \"\"\n    n = int(match.group())\n    lines = []\n    for event in order_event_stream(n):\n        lines.append(f\"Processing event: {event}\")\n    return \"\\n\".join(lines)\n\nif __name__ == \"__main__\":\n    import sys\n    input_str = sys.stdin.read()\n    if not input_str.strip() and len(sys.argv) > 1:\n        input_str = \" \".join(sys.argv[1:])\n    print(solve(input_str.strip()))",
+  "text": "def solve(input_str):\n    p = int(input_str.strip())\n    return (\n        \"# Tuning shuffle partitions balances parallelism vs. task overhead:\\n\"\n        \"# too few partitions = large, slow shuffle tasks; too many = excessive scheduling overhead\\n\"\n        \"spark = SparkSession.builder \\\\\\n\"\n        f'.config(\"spark.sql.shuffle.partitions\", {p}) \\\\\\n'\n        \".getOrCreate()\"\n    )\n\nprint(solve(\"200\"))\n",
   "mode": "code",
-  "delay": 10,
+  "delay": 40,
   "jitter": true,
-  "startDelay": 300
+  "startDelay": 800
 }
