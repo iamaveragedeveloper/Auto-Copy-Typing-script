@@ -26,6 +26,17 @@
     }
   };
 
+  // On the local typer's own page, hand its access token to the extension so the two can pair.
+  const isTyperPage = location.origin === 'http://127.0.0.1:8765' || location.origin === 'http://localhost:8765';
+  if (isTyperPage) {
+    const grab = () => {
+      const meta = document.querySelector('meta[name="cptyper-token"]');
+      if (meta && /^[0-9a-f]{48}$/.test(meta.content)) send({ type: 'typer-token', token: meta.content });
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', grab);
+    else grab();
+  }
+
   try {
     chrome.storage.local.get({ showOnSelect: true }).then((v) => (enabled = v.showOnSelect !== false));
     chrome.storage.onChanged.addListener((changes, area) => {
@@ -74,20 +85,22 @@
         .card.counting .count { display: flex; }
       </style>
       <div class="card" id="card">
-        <div class="tip"><b id="tipTitle"></b><span>Click Type in ${AUTOTYPE_SECONDS}s, then go to the target place and click inside the field.</span></div>
+        <div class="tip"><b id="tipTitle"></b><span id="tipText"></span></div>
         <button class="go" id="go" title="Types the highlighted text into the next field you click">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg>
           <span id="goLabel">Type in ${AUTOTYPE_SECONDS}s</span>
         </button>
         <div class="count">
           <div class="num" id="num">${AUTOTYPE_SECONDS}</div>
-          <div class="msg"><b>Go to the target place now</b><span id="hint">Click inside the field to type into</span></div>
+          <div class="msg"><b id="msgTitle">Go to the target place now</b><span id="hint">Click inside the field to type into</span></div>
           <button class="cancel" id="cancel">Cancel</button>
         </div>
       </div>`;
     ui = {
       card: root.getElementById('card'),
       tipTitle: root.getElementById('tipTitle'),
+      tipText: root.getElementById('tipText'),
+      msgTitle: root.getElementById('msgTitle'),
       go: root.getElementById('go'),
       num: root.getElementById('num'),
       hint: root.getElementById('hint'),
@@ -123,15 +136,23 @@
   function showAt(rect, info) {
     if (!host) build();
     ui.tipTitle.textContent = `${info.chars.toLocaleString()} character${info.chars === 1 ? '' : 's'} ${info.code ? 'of code ' : ''}highlighted`;
+    if (!ui.card.classList.contains('show')) {
+      // with the optional local typer connected the text can go into any app, not just this browser
+      ui.tipText.textContent = `Click Type in ${AUTOTYPE_SECONDS}s, then go to the target place and click inside the field.`;
+      runtime.sendMessage({ type: 'typer-status' }).then((state) => {
+        if (state === 'ready') ui.tipText.textContent = `Click Type in ${AUTOTYPE_SECONDS}s, then go to any app and click inside the field.`;
+      }).catch(() => {});
+    }
     ui.card.classList.add('show');
     place(rect);
   }
 
   // The countdown pill sits in a corner so it never covers the field you need to click.
-  function showCountdown(left) {
+  function showCountdown(left, via) {
     if (!host) build();
     counting = true;
     ui.num.textContent = left;
+    ui.msgTitle.textContent = via === 'typer' ? 'Go to any app now' : 'Go to the target place now';
     ui.card.classList.add('show', 'counting');
     host.style.transform = `translate(${Math.max(8, window.innerWidth - ui.card.offsetWidth - 20)}px, ${Math.max(8, window.innerHeight - ui.card.offsetHeight - 20)}px)`;
   }
@@ -222,7 +243,7 @@
   }
 
   function refresh() {
-    if (counting || running || !enabled) return;
+    if (counting || running || !enabled || isTyperPage) return;
     const s = readSelection();
     if (s && s.text.trim()) {
       s.text = cleanText(s.text);
@@ -259,7 +280,7 @@
       if (running) hide();
     } else if (msg.type === 'countdown') {
       if (msg.left) {
-        showCountdown(msg.left);
+        showCountdown(msg.left, msg.via);
       } else {
         counting = false;
         hide();

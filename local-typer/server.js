@@ -159,15 +159,21 @@ function readBody(req) {
 const server = http.createServer(async (req, res) => {
   // Block other websites (and DNS-rebinding tricks) from driving a local service that types keystrokes.
   if (!ALLOWED_HOSTS.has(req.headers.host)) return send(res, 403, { error: 'Bad host' });
+  // The optional browser extension calls in from a chrome-extension:// origin. Websites can't forge that
+  // origin, and every /api/ call below still needs the token, which only this server's own page contains.
   const origin = req.headers.origin;
-  if (origin && !ALLOWED_HOSTS.has(origin.replace(/^https?:\/\//, ''))) return send(res, 403, { error: 'Bad origin' });
+  const fromExtension = !!origin && origin.startsWith('chrome-extension://');
+  if (origin && !fromExtension && !ALLOWED_HOSTS.has(origin.replace(/^https?:\/\//, ''))) return send(res, 403, { error: 'Bad origin' });
 
   const url = req.url.split('?')[0];
 
   if (req.method === 'GET' && url === '/') {
-    const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8').replace('__TOKEN__', TOKEN).replace('__HOTKEY__', HOTKEY);
+    const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8').replaceAll('__TOKEN__', TOKEN).replace('__HOTKEY__', HOTKEY);
     return send(res, 200, html, 'text/html; charset=utf-8');
   }
+
+  // lets the extension tell whether the typer is running before it has a token
+  if (req.method === 'GET' && url === '/api/hello') return send(res, 200, { app: 'copy-paste-typer' });
 
   if (!url.startsWith('/api/')) return send(res, 404, { error: 'Not found' });
   if (req.headers['x-token'] !== TOKEN) return send(res, 403, { error: 'Bad token' });

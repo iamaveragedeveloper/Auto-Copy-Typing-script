@@ -1,9 +1,10 @@
 {
   "manifest_version": 3,
   "name": "Copy Paste Typer",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Types your text into fields that block pasting, using real keystrokes.",
   "permissions": ["storage", "scripting", "activeTab", "debugger"],
+  "host_permissions": ["http://127.0.0.1:8765/*"],
   "action": {
     "default_popup": "popup.html",
     "default_title": "Copy Paste Typer"

@@ -38,6 +38,14 @@
     <input id="jitter" type="checkbox"> Vary the timing randomly
   </label>
   <label>
+    <span>Type into</span>
+    <select id="target">
+      <option value="auto">Any app, if the local typer is running</option>
+      <option value="browser">This browser tab only</option>
+    </select>
+  </label>
+  <div id="typerStatus" class="hint"></div>
+  <label>
     <input id="showOnSelect" type="checkbox"> Offer "Type in 5s" when I highlight text
   </label>
   <label>

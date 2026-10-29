@@ -8,6 +8,7 @@ Types your text into places that block pasting, using real keystrokes. Two tools
 | Input | Highlight text on a page, or paste into the popup | Paste into a page on `localhost:8765` |
 | Start | "Type in 5s" button, popup, or **Alt+Q** | "Type in 5 seconds" button or the hotkey (**Alt+Q**) |
 | Needs | Nothing to install beyond loading it | [Node.js](https://nodejs.org) and Windows |
+| Together | Detects the local typer when it runs and sends typing through it, so highlights can be typed into any app | Optional: everything works without the extension |
 
 ## Chrome extension
 
@@ -26,6 +27,16 @@ Types your text into places that block pasting, using real keystrokes. Two tools
 Stop at any time with **Esc**, **Alt+Q**, or the popup's **Stop** button. The popup also lets you paste text by hand, change the speed, and turn the highlight button off.
 
 Highlights are read from normal page text, text boxes, and the Monaco, Ace and CodeMirror editors.
+
+### Typing into other apps (optional)
+
+On its own the extension can only type inside the browser. If you also run the **local typer** (below), the extension connects to it and the same **Type in 5s** button types into **any Windows app**: switch to the app during the countdown and click into its field.
+
+- It is optional. Without the local typer nothing changes: typing stays in the browser.
+- It connects by itself: when you start `start.bat` it opens `http://localhost:8765`, and the extension picks up that run's access token from the page. If your default browser isn't the one with the extension, open `http://localhost:8765` in it once (the popup has a link). The token changes every time the typer restarts.
+- The popup shows whether it is connected, and **Type into → This browser tab only** switches it off.
+- Only that page can hand the token over, and the typer rejects every request that doesn't carry it, so other websites and extensions can't drive it.
+- The typer's default port is 8765. If you change `PORT`, the extension won't find it.
 
 ### Modes
 

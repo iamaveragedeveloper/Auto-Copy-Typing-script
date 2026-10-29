@@ -1,4 +1,4 @@
-const DEFAULTS = { text: '', delay: 40, jitter: true, startDelay: 800, mode: 'char', showOnSelect: true };
+const DEFAULTS = { text: '', delay: 40, jitter: true, startDelay: 800, mode: 'char', showOnSelect: true, target: 'auto' };
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -8,6 +8,7 @@ const els = {
   startDelay: $('startDelay'),
   mode: $('mode'),
   showOnSelect: $('showOnSelect'),
+  target: $('target'),
 };
 
 const readSettings = () => ({
@@ -17,6 +18,7 @@ const readSettings = () => ({
   startDelay: Number(els.startDelay.value) || 0,
   mode: els.mode.value,
   showOnSelect: els.showOnSelect.checked,
+  target: els.target.value,
 });
 
 const showError = (msg) => ($('status').textContent = msg);
@@ -35,7 +37,26 @@ async function init() {
   els.startDelay.value = saved.startDelay;
   els.mode.value = saved.mode;
   els.showOnSelect.checked = saved.showOnSelect;
+  els.target.value = saved.target;
+  showTyperStatus();
   $('delayVal').textContent = `${saved.delay} ms`;
+}
+
+// The local typer (local-typer/start.bat) is optional: it only adds typing into other apps.
+async function showTyperStatus() {
+  const el = $('typerStatus');
+  const state = await chrome.runtime.sendMessage({ type: 'typer-status' }).catch(() => 'off');
+  if (state === 'ready') {
+    el.textContent = 'Local typer connected: highlighted text can be typed into any app.';
+  } else if (state === 'unpaired') {
+    el.innerHTML = 'Local typer is running but not connected to this browser. <a href="#" id="pair">Open its page once</a> to connect.';
+    $('pair').addEventListener('click', (e) => {
+      e.preventDefault();
+      chrome.tabs.create({ url: 'http://localhost:8765' });
+    });
+  } else {
+    el.textContent = 'Local typer not running (optional): typing stays inside this browser. Run local-typer/start.bat to type into any app.';
+  }
 }
 
 function save() {

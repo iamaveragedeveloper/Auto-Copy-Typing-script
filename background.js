@@ -1,4 +1,4 @@
-const DEFAULTS = { text: '', delay: 40, jitter: true, startDelay: 800, mode: 'char', showOnSelect: true };
+const DEFAULTS = { text: '', delay: 40, jitter: true, startDelay: 800, mode: 'char', showOnSelect: true, target: 'auto' };
 const AUTOTYPE_SECONDS = 5;
 
 const runs = new Map(); // tabId -> { stop: boolean }
@@ -166,29 +166,116 @@ async function startTyping(tabId, settings) {
   return { ok: true };
 }
 
-function sendCountdown(source, left) {
-  chrome.tabs.sendMessage(source.tabId, { type: 'countdown', left }, { frameId: source.frameId }).catch(() => {});
+// --- optional link to the Windows local typer (local-typer/start.bat) ----------------------
+// When it is running and paired, typing goes through it, so it works in any app. Otherwise
+// everything stays inside the browser as before. The token is handed over by the typer's own
+// page (content.js reads it there), so no other page or program can drive it.
+
+const TYPER_URL = 'http://127.0.0.1:8765';
+const TYPER_ORIGINS = ['http://127.0.0.1:8765', 'http://localhost:8765'];
+
+async function typerApi(path, body) {
+  const { typerToken } = await chrome.storage.local.get({ typerToken: '' });
+  const res = await fetch(TYPER_URL + path, {
+    method: body === undefined ? 'GET' : 'POST',
+    headers: { 'X-Token': typerToken, 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(2000),
+  });
+  if (res.status === 403) throw new Error('Local typer was restarted. Open http://localhost:8765 once to reconnect.');
+  return res.json();
+}
+
+// 'off' (not running), 'unpaired' (running, but this browser has no valid token), or 'ready'
+async function typerState() {
+  try {
+    const hello = await (await fetch(TYPER_URL + '/api/hello', { signal: AbortSignal.timeout(1000) })).json();
+    if (hello.app !== 'copy-paste-typer') return 'off';
+  } catch {
+    return 'off';
+  }
+  try {
+    await typerApi('/api/status');
+    return 'ready';
+  } catch {
+    return 'unpaired';
+  }
+}
+
+const typerMode = (extensionMode) => (extensionMode === 'line' ? 'code' : 'char');
+
+const typerSettings = (s) => ({ text: s.text, mode: typerMode(s.mode), delay: s.delay, jitter: s.jitter, startDelay: s.startDelay });
+
+// True when the settings allow it and the typer is up and paired.
+async function useTyper(settings) {
+  return settings.target !== 'browser' && (await typerState()) === 'ready';
+}
+
+// Hands the text to the typer; it waits startDelayMs, then types into whatever window is active.
+async function startViaTyper(settings, startDelayMs) {
+  await typerApi('/api/state', typerSettings(settings));
+  const res = await typerApi('/api/type', { startDelay: startDelayMs });
+  return res.ok ? { ok: true } : { ok: false, error: res.error || 'Local typer could not start.' };
+}
+
+function stopTyper() {
+  typerApi('/api/stop', {}).catch(() => {});
+}
+
+// Mirrors the typer's progress on the toolbar badge until it finishes.
+async function followTyper(tabId) {
+  for (;;) {
+    await sleep(500);
+    let st;
+    try {
+      st = await typerApi('/api/status');
+    } catch {
+      return;
+    }
+    if (st.error) return flagError(tabId, st.error);
+    if (!st.running) return chrome.action.setBadgeText({ text: '', tabId }).catch(() => {});
+    showProgress(tabId, st.progress);
+  }
+}
+
+function sendCountdown(source, left, via) {
+  chrome.tabs.sendMessage(source.tabId, { type: 'countdown', left, via }, { frameId: source.frameId }).catch(() => {});
 }
 
 function cancelAutotype() {
   if (!pending) return;
   pending.cancelled = true;
+  if (pending.viaTyper) stopTyper();
   sendCountdown(pending.source, null);
   chrome.action.setBadgeText({ text: '' }).catch(() => {});
   pending = null;
 }
 
-// The highlighted text becomes the saved text, then after the countdown it is typed into
-// whichever tab is active by then (usually the one you switched to while it counted down).
+// The highlighted text becomes the saved text, then after the countdown it is typed. With the
+// local typer connected it goes into whichever app you switched to; otherwise into the active tab.
 async function beginAutotype(text, isCode, source) {
   cancelAutotype();
-  const job = { source, cancelled: false };
+  const job = { source, cancelled: false, viaTyper: false };
   pending = job;
-  await chrome.storage.local.set({ text, mode: isCode ? 'line' : 'char' });
+  const saved = { mode: isCode ? 'line' : 'char' };
+  await chrome.storage.local.set({ text, ...saved });
+  const settings = { ...DEFAULTS, ...(await chrome.storage.local.get(DEFAULTS)), text, ...saved };
+
+  if (await useTyper(settings)) {
+    // the typer does its own waiting, so this keeps working even if the browser is minimised
+    const res = await startViaTyper(settings, AUTOTYPE_SECONDS * 1000).catch((err) => ({ ok: false, error: err.message }));
+    if (job.cancelled) return;
+    if (!res.ok) {
+      pending = null;
+      return flagError(source.tabId, res.error);
+    }
+    job.viaTyper = true;
+  }
+  const via = job.viaTyper ? 'typer' : 'browser';
 
   for (let left = AUTOTYPE_SECONDS; left > 0; left--) {
     if (job.cancelled) return;
-    sendCountdown(source, left);
+    sendCountdown(source, left, via);
     chrome.action.setBadgeBackgroundColor({ color: '#e8890c' }).catch(() => {});
     chrome.action.setBadgeText({ text: String(left) }).catch(() => {});
     await sleep(1000);
@@ -199,10 +286,11 @@ async function beginAutotype(text, isCode, source) {
   sendCountdown(source, null);
   chrome.action.setBadgeText({ text: '' }).catch(() => {});
 
+  if (job.viaTyper) return followTyper(source.tabId);
+
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   if (!tab || runs.has(tab.id)) return;
-  const settings = { ...DEFAULTS, ...(await chrome.storage.local.get(DEFAULTS)), text, startDelay: 0 };
-  const res = await startTyping(tab.id, settings);
+  const res = await startTyping(tab.id, { ...settings, startDelay: 0 });
   if (!res.ok) await flagError(tab.id, res.error);
 }
 
@@ -213,8 +301,25 @@ chrome.debugger.onDetach.addListener((source) => {
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'start') {
-    startTyping(msg.tabId, { ...DEFAULTS, ...msg.settings }).then(sendResponse);
+    const settings = { ...DEFAULTS, ...msg.settings };
+    (async () => {
+      if (settings.text && (await useTyper(settings))) {
+        return startViaTyper(settings, settings.startDelay).catch((err) => ({ ok: false, error: err.message }));
+      }
+      return startTyping(msg.tabId, settings);
+    })().then(sendResponse);
     return true;
+  }
+  if (msg.type === 'typer-status') {
+    typerState().then(sendResponse);
+    return true;
+  }
+  if (msg.type === 'typer-token') {
+    // only accepted from the typer's own page, never from any other site
+    if (TYPER_ORIGINS.includes(sender.origin) && typeof msg.token === 'string' && /^[0-9a-f]{48}$/.test(msg.token)) {
+      chrome.storage.local.set({ typerToken: msg.token });
+    }
+    sendResponse({ ok: true });
   }
   if (msg.type === 'autotype' && sender.tab && msg.text) {
     beginAutotype(msg.text, !!msg.isCode, { tabId: sender.tab.id, frameId: sender.frameId });
@@ -222,7 +327,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (msg.type === 'selection' && msg.text) {
     // every highlight becomes the text to type, in code mode when it looks like code
-    chrome.storage.local.set({ text: msg.text, mode: msg.isCode ? 'line' : 'char' });
+    const saved = { text: msg.text, mode: msg.isCode ? 'line' : 'char' };
+    chrome.storage.local.set(saved);
+    // keep the local typer's saved text in step too, so its hotkey types the highlight in any app
+    chrome.storage.local.get(DEFAULTS).then(async (stored) => {
+      const settings = { ...DEFAULTS, ...stored, ...saved };
+      if (await useTyper(settings)) typerApi('/api/state', typerSettings(settings)).catch(() => {});
+    });
   }
   if (msg.type === 'cancel-autotype') {
     cancelAutotype();
@@ -230,6 +341,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (msg.type === 'stop') {
     cancelAutotype();
+    stopTyper();
     const tabId = msg.tabId ?? sender.tab?.id;
     const run = runs.get(tabId);
     if (run) run.stop = true;
